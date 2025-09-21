@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { worldCities, getCityCount, type City } from '@/data/worldCities';
 import WeatherForecast from './WeatherForecast';
+import EventPlanner from './EventPlanner';
 
 interface WeatherParams {
   temperature: number;
@@ -40,6 +41,7 @@ const ThreeEarth = () => {
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [performanceMode, setPerformanceMode] = useState<boolean>(false);
   const [showWeatherForecast, setShowWeatherForecast] = useState(false);
+  const [showEventPlanner, setShowEventPlanner] = useState(false);
   const [forecastCity, setForecastCity] = useState<City | null>(null);
   const [weatherData, setWeatherData] = useState<any>(null);
   const [loadingWeather, setLoadingWeather] = useState(false);
@@ -122,6 +124,11 @@ const ThreeEarth = () => {
     setForecastCity(city);
     setShowWeatherForecast(true);
     fetchWeatherData(city);
+  };
+
+  const handleEventPlannerOpen = (city: City) => {
+    setForecastCity(city);
+    setShowEventPlanner(true);
   };
 
   // Performance optimizations
@@ -645,22 +652,35 @@ const ThreeEarth = () => {
       {/* Weather Info Panel */}
       <Card className="absolute top-6 right-6 p-4 w-80 backdrop-blur-glass bg-card/70 border-glass-border shadow-glass border-green-500/50 z-20">
         <h3 className="text-lg font-semibold mb-3 text-green-400">
-          Weather Data
+          NASA Space Apps Challenge
         </h3>
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            Click on any city to view real-time weather forecasts
+            🏆 "Will It Rain On My Parade?" Challenge
           </p>
           <div className="text-xs text-muted-foreground space-y-1">
             <p className="flex items-center gap-2">
               <span className="w-2 h-2 bg-green-400 rounded-full"></span>
-              Powered by Open-Meteo API
+              Historical weather probability analysis
             </p>
-            <p>• Free global weather data</p>
-            <p>• No API key required</p>
-            <p>• Real-time atmospheric conditions</p>
-            <p>• 7-day forecasts</p>
+            <p>• Click cities for current forecasts</p>
+            <p>• Use Event Planner for probability analysis</p>
+            <p>• NASA Earth observation data</p>
+            <p>• Perfect for outdoor event planning</p>
           </div>
+          <Button
+            onClick={() => {
+              if (selectedCity) {
+                handleEventPlannerOpen(selectedCity);
+              } else {
+                toast.error('Please select a city first');
+              }
+            }}
+            className="w-full text-sm"
+            size="sm"
+          >
+            🎯 Open Event Planner
+          </Button>
         </div>
       </Card>
 
@@ -785,14 +805,15 @@ const ThreeEarth = () => {
           <p className="font-medium text-foreground">Controls:</p>
           <ul className="text-muted-foreground space-y-1 text-xs">
             <li>• <span className="font-medium">Hold left-click + drag</span> to rotate Earth</li>
-            <li>• <span className="font-medium">Click city dots</span> to view weather forecast</li>
+            <li>• <span className="font-medium">Click city dots</span> for current weather</li>
+            <li>• <span className="font-medium">Select city + Event Planner</span> for probability analysis</li>
             <li>• Search cities above to focus on them</li>
             <li>• Scroll to zoom in/out</li>
             <li>• <span className="text-yellow-400">Gold dots</span> = capitals</li>
             <li>• <span className="text-cyan-400">Cyan dots</span> = major cities</li>
             <li>• <span className="text-red-400">Red dot</span> = selected city</li>
             <li>• Larger dots = bigger population</li>
-            <li>• <span className="text-green-400">✓ Free weather data</span> available for all cities</li>
+            <li>• <span className="text-purple-400">📡 NASA Earth data</span> for event planning</li>
           </ul>
         </div>
       </Card>
@@ -810,6 +831,17 @@ const ThreeEarth = () => {
             setShowWeatherForecast(false);
             setForecastCity(null);
             setWeatherData(null);
+          }}
+        />
+      )}
+
+      {/* Event Planner Modal */}
+      {showEventPlanner && (
+        <EventPlanner
+          selectedCity={forecastCity}
+          onClose={() => {
+            setShowEventPlanner(false);
+            setForecastCity(null);
           }}
         />
       )}
