@@ -21,6 +21,9 @@ const ThreeEarth = () => {
   const earthRef = useRef<THREE.Mesh>();
   const cloudsRef = useRef<THREE.Mesh>();
   const frameRef = useRef<number>();
+  const cameraRef = useRef<THREE.PerspectiveCamera>();
+  const markersRef = useRef<THREE.Group>();
+  const lastUpdateTime = useRef<number>(0);
   
   const [isLoading, setIsLoading] = useState(true);
   const [showNightLights, setShowNightLights] = useState(false);
@@ -31,6 +34,7 @@ const ThreeEarth = () => {
   const [searchResults, setSearchResults] = useState<City[]>([]);
   const [selectedCity, setSelectedCity] = useState<City | null>(null);
   const [showSearchResults, setShowSearchResults] = useState(false);
+  const [performanceMode, setPerformanceMode] = useState<boolean>(false);
   const [weatherParams, setWeatherParams] = useState<WeatherParams>({
     temperature: 20,
     humidity: 60,
@@ -81,6 +85,51 @@ const ThreeEarth = () => {
     toast.success(`Focused on ${city.name}, ${city.country}`);
   };
 
+  // Performance optimizations
+  const shouldUpdateMarker = (time: number): boolean => {
+    return time - lastUpdateTime.current > (performanceMode ? 100 : 50); // Reduce update frequency in performance mode
+  };
+
+  const getVisibilityRadius = (cameraDistance: number): number => {
+    // Show fewer markers when zoomed out for better performance
+    if (cameraDistance > 20) return 0.3;
+    if (cameraDistance > 15) return 0.5;
+    return 1.0;
+  };
+
+  // Optimize marker creation with instanced geometry
+  const createOptimizedMarker = (city: City, scene: THREE.Scene, earth: THREE.Mesh): THREE.Mesh => {
+    const markerGeometry = new THREE.SphereGeometry(0.05, 6, 6); // Reduced geometry complexity
+    
+    let markerColor = city.isCapital ? 0xffd700 : 0x00ffff;
+    
+    if (selectedCity && selectedCity.name === city.name && selectedCity.country === city.country) {
+      markerColor = 0xff4444;
+    }
+    
+    const markerMaterial = new THREE.MeshBasicMaterial({ 
+      color: markerColor,
+      transparent: true,
+      opacity: 0.9
+    });
+    
+    const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+    const position = latLngToVector3(city.lat, city.lng);
+    marker.position.copy(position);
+    
+    const populationScale = Math.max(0.5, Math.min(2.0, Math.log10(city.population) / 4));
+    marker.scale.setScalar(populationScale);
+    
+    marker.userData = { 
+      city, 
+      originalScale: populationScale,
+      pulsePhase: Math.random() * Math.PI * 2,
+      lastUpdate: 0
+    };
+    
+    return marker;
+  };
+
   const regions = ['All', 'North America', 'South America', 'Europe', 'Asia', 'Africa', 'Oceania'];
   const cityStats = getCityCount();
 
@@ -103,7 +152,7 @@ const ThreeEarth = () => {
     const scene = new THREE.Scene();
     sceneRef.current = scene;
     
-    // Camera setup
+    // Camera setup with optimized settings
     const camera = new THREE.PerspectiveCamera(
       75,
       mountRef.current.clientWidth / mountRef.current.clientHeight,
@@ -111,16 +160,17 @@ const ThreeEarth = () => {
       1000
     );
     camera.position.z = 15;
+    cameraRef.current = camera;
 
-    // Renderer setup
+    // Renderer setup with performance optimizations
     const renderer = new THREE.WebGLRenderer({ 
-      antialias: true, 
+      antialias: !performanceMode, // Disable antialiasing in performance mode
       alpha: true,
       powerPreference: "high-performance"
     });
     renderer.setSize(mountRef.current.clientWidth, mountRef.current.clientHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.shadowMap.enabled = true;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, performanceMode ? 1.5 : 2));
+    renderer.shadowMap.enabled = !performanceMode; // Disable shadows in performance mode
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 0.8;
@@ -202,44 +252,21 @@ const ThreeEarth = () => {
       scene.add(earth);
       earthRef.current = earth;
 
-      // Add city markers
+      // Add city markers with performance optimization
       const filteredCities = getFilteredCities();
+      const markersGroup = new THREE.Group();
+      markersRef.current = markersGroup;
       
-      filteredCities.forEach(city => {
-        const markerGeometry = new THREE.SphereGeometry(0.05, 8, 8);
-        
-        // Different colors for capitals vs major cities
-        let markerColor = city.isCapital ? 0xffd700 : 0x00ffff; // Gold for capitals, cyan for major cities
-        
-        // Highlight selected city
-        if (selectedCity && selectedCity.name === city.name && selectedCity.country === city.country) {
-          markerColor = 0xff4444; // Red for selected city
-        }
-        
-        const markerMaterial = new THREE.MeshBasicMaterial({ 
-          color: markerColor,
-          transparent: true,
-          opacity: 0.9
-        });
-        
-        const marker = new THREE.Mesh(markerGeometry, markerMaterial);
-        const position = latLngToVector3(city.lat, city.lng);
-        marker.position.copy(position);
-        
-        // Scale marker based on population
-        const populationScale = Math.max(0.5, Math.min(2.0, Math.log10(city.population) / 4));
-        marker.scale.setScalar(populationScale);
-        
-        // Add pulsing animation
-        const originalScale = marker.scale.clone();
-        marker.userData = { 
-          city, 
-          originalScale,
-          pulseTime: Math.random() * Math.PI * 2
-        };
-        
-        earth.add(marker);
+      // Limit markers based on performance mode
+      const maxMarkers = performanceMode ? 100 : filteredCities.length;
+      const citiesToRender = filteredCities.slice(0, maxMarkers);
+      
+      citiesToRender.forEach(city => {
+        const marker = createOptimizedMarker(city, scene, earth);
+        markersGroup.add(marker);
       });
+      
+      earth.add(markersGroup);
 
       setIsLoading(false);
       toast.success("Earth loaded successfully!");
@@ -257,12 +284,12 @@ const ThreeEarth = () => {
       toast.success("Earth loaded (basic mode)");
     });
 
-    // Create clouds
-    const cloudsGeometry = new THREE.SphereGeometry(5.1, 64, 64);
+    // Create clouds with performance optimization
+    const cloudsGeometry = new THREE.SphereGeometry(5.1, performanceMode ? 32 : 64, performanceMode ? 32 : 64);
     const cloudsMaterial = new THREE.MeshLambertMaterial({
       color: 0xffffff,
       transparent: true,
-      opacity: 0.2,
+      opacity: performanceMode ? 0.1 : 0.2, // Reduce opacity in performance mode
     });
     const clouds = new THREE.Mesh(cloudsGeometry, cloudsMaterial);
     scene.add(clouds);
@@ -281,10 +308,11 @@ const ThreeEarth = () => {
       camera.lookAt(0, 0, 0);
     }
 
-    // Mouse controls
+    // Optimized mouse controls with throttling
     let isDragging = false;
     let previousMousePosition = { x: 0, y: 0 };
     let rotationVelocity = { x: 0, y: 0 };
+    let lastMouseMove = 0;
 
     const handleMouseDown = (event: MouseEvent) => {
       isDragging = true;
@@ -293,6 +321,10 @@ const ThreeEarth = () => {
 
     const handleMouseMove = (event: MouseEvent) => {
       if (!isDragging) return;
+
+      const now = Date.now();
+      if (now - lastMouseMove < (performanceMode ? 32 : 16)) return; // Throttle mouse events
+      lastMouseMove = now;
 
       const deltaMove = {
         x: event.clientX - previousMousePosition.x,
@@ -321,15 +353,16 @@ const ThreeEarth = () => {
     renderer.domElement.addEventListener('mouseup', handleMouseUp);
     renderer.domElement.addEventListener('wheel', handleWheel);
 
-    // Animation loop
+    // Optimized animation loop
     const animate = () => {
       frameRef.current = requestAnimationFrame(animate);
 
       const time = Date.now() * 0.001;
+      const shouldUpdate = shouldUpdateMarker(Date.now());
 
       if (earthRef.current) {
         if (autoRotate && !isDragging) {
-          earthRef.current.rotation.y += 0.002;
+          earthRef.current.rotation.y += performanceMode ? 0.001 : 0.002;
         } else {
           earthRef.current.rotation.x += rotationVelocity.x;
           earthRef.current.rotation.y += rotationVelocity.y;
@@ -337,17 +370,31 @@ const ThreeEarth = () => {
           rotationVelocity.y *= 0.95;
         }
 
-        // Animate city markers
-        earthRef.current.children.forEach(child => {
-          if (child.userData.city) {
-            child.userData.pulseTime += 0.02;
-            const pulse = 1 + Math.sin(child.userData.pulseTime) * 0.3;
-            child.scale.copy(child.userData.originalScale).multiplyScalar(pulse);
-          }
-        });
+        // Optimize marker animations - only update when needed
+        if (shouldUpdate && markersRef.current) {
+          const cameraDistance = camera.position.distanceTo(new THREE.Vector3(0, 0, 0));
+          const visibilityRadius = getVisibilityRadius(cameraDistance);
+          
+          markersRef.current.children.forEach((marker) => {
+            const mesh = marker as THREE.Mesh;
+            if (mesh.userData.city) {
+              // Level of detail - hide distant markers
+              mesh.visible = mesh.userData.originalScale * visibilityRadius > 0.3;
+              
+              if (mesh.visible && !performanceMode) {
+                // Reduced frequency pulsing animation
+                mesh.userData.pulsePhase += 0.01;
+                const pulse = 1 + Math.sin(mesh.userData.pulsePhase) * 0.2;
+                mesh.scale.setScalar(mesh.userData.originalScale * pulse);
+              }
+            }
+          });
+          
+          lastUpdateTime.current = Date.now();
+        }
       }
 
-      if (cloudsRef.current) {
+      if (cloudsRef.current && !performanceMode) {
         cloudsRef.current.rotation.y += 0.0005;
       }
 
@@ -382,7 +429,7 @@ const ThreeEarth = () => {
       }
       renderer.dispose();
     };
-  }, [autoRotate, showNightLights, showCapitalsOnly, selectedRegion, selectedCity]);
+  }, [autoRotate, showNightLights, showCapitalsOnly, selectedRegion, selectedCity, performanceMode]);
 
   const updateWeatherParam = (key: keyof WeatherParams, value: number) => {
     setWeatherParams(prev => ({ ...prev, [key]: value }));
@@ -464,6 +511,17 @@ const ThreeEarth = () => {
         {/* Clear Selection */}
         {selectedCity && (
           <div className="mt-3 p-3 bg-secondary/30 rounded-lg">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm">Performance Mode</Label>
+              <Button
+                variant={performanceMode ? "default" : "outline"}
+                size="sm"
+                onClick={() => setPerformanceMode(!performanceMode)}
+              >
+                {performanceMode ? 'ON' : 'OFF'}
+              </Button>
+            </div>
+
             <div className="flex items-center justify-between">
               <div>
                 <div className="font-medium text-sm">Focused on:</div>
