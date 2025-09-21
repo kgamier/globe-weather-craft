@@ -666,7 +666,7 @@ const ThreeEarth = () => {
 
       {/* API Key Setup */}
       {!weatherApiKey && (
-        <Card className="absolute top-6 right-6 p-4 w-80 backdrop-blur-glass bg-card/70 border-glass-border shadow-glass border-orange-500/50">
+        <Card className="absolute top-6 right-6 p-4 w-80 backdrop-blur-glass bg-card/70 border-glass-border shadow-glass border-orange-500/50 z-20">
           <h3 className="text-lg font-semibold mb-3 text-orange-400">
             Weather API Setup
           </h3>
@@ -790,52 +790,54 @@ const ThreeEarth = () => {
         </Card>
       )}
 
-      {/* Controls Panel */}
-      <Card className="absolute top-6 right-6 p-4 w-72 backdrop-blur-glass bg-card/70 border-glass-border shadow-glass">
-        <h3 className="text-lg font-semibold mb-3 bg-gradient-earth bg-clip-text text-transparent">
-          Earth Controls
-        </h3>
-        
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <Label className="text-sm">Auto Rotate</Label>
-            <Button
-              variant={autoRotate ? "default" : "outline"}
-              size="sm"
-              onClick={() => setAutoRotate(!autoRotate)}
-            >
-              {autoRotate ? 'ON' : 'OFF'}
-            </Button>
-          </div>
+      {/* Controls Panel - only show when API key is set */}
+      {weatherApiKey && (
+        <Card className="absolute bottom-6 right-6 p-4 w-72 backdrop-blur-glass bg-card/70 border-glass-border shadow-glass z-10">
+          <h3 className="text-lg font-semibold mb-3 bg-gradient-earth bg-clip-text text-transparent">
+            Earth Controls
+          </h3>
+          
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm">Auto Rotate</Label>
+              <Button
+                variant={autoRotate ? "default" : "outline"}
+                size="sm"
+                onClick={() => setAutoRotate(!autoRotate)}
+              >
+                {autoRotate ? 'ON' : 'OFF'}
+              </Button>
+            </div>
 
-          <div className="flex items-center justify-between">
-            <Label className="text-sm">Night Lights</Label>
-            <Button
-              variant={showNightLights ? "default" : "outline"}
-              size="sm"
-              onClick={() => setShowNightLights(!showNightLights)}
-            >
-              {showNightLights ? 'ON' : 'OFF'}
-            </Button>
-          </div>
+            <div className="flex items-center justify-between">
+              <Label className="text-sm">Night Lights</Label>
+              <Button
+                variant={showNightLights ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShowNightLights(!showNightLights)}
+              >
+                {showNightLights ? 'ON' : 'OFF'}
+              </Button>
+            </div>
 
-          <div className="pt-2 border-t border-border/50">
-            <div className="text-xs space-y-1">
-              <div className="flex justify-between">
-                <span>Cities:</span>
-                <span className="text-primary font-medium">{worldCities.length}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Data:</span>
-                <span className="text-accent">NASA Blue Marble</span>
+            <div className="pt-2 border-t border-border/50">
+              <div className="text-xs space-y-1">
+                <div className="flex justify-between">
+                  <span>Cities:</span>
+                  <span className="text-primary font-medium">{worldCities.length}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Data:</span>
+                  <span className="text-accent">NASA Blue Marble</span>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      </Card>
+        </Card>
+      )}
 
       {/* Instructions */}
-      <Card className="absolute bottom-6 left-6 p-4 backdrop-blur-glass bg-card/70 border-glass-border shadow-glass">
+      <Card className="absolute bottom-6 left-1/2 transform -translate-x-1/2 p-4 backdrop-blur-glass bg-card/70 border-glass-border shadow-glass z-10">
         <div className="text-sm space-y-2">
           <p className="font-medium text-foreground">Controls:</p>
           <ul className="text-muted-foreground space-y-1 text-xs">
