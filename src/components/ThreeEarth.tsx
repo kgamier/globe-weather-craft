@@ -308,18 +308,30 @@ const ThreeEarth = () => {
       camera.lookAt(0, 0, 0);
     }
 
-    // Optimized mouse controls with throttling
+    // Optimized mouse controls with better event handling
     let isDragging = false;
+    let dragStart = { x: 0, y: 0 };
     let previousMousePosition = { x: 0, y: 0 };
     let rotationVelocity = { x: 0, y: 0 };
     let lastMouseMove = 0;
 
     const handleMouseDown = (event: MouseEvent) => {
-      isDragging = true;
+      isDragging = false; // Don't set to true immediately
+      dragStart = { x: event.clientX, y: event.clientY };
+      previousMousePosition = { x: event.clientX, y: event.clientY };
       setAutoRotate(false);
     };
 
     const handleMouseMove = (event: MouseEvent) => {
+      const dragDistance = Math.sqrt(
+        Math.pow(event.clientX - dragStart.x, 2) + Math.pow(event.clientY - dragStart.y, 2)
+      );
+      
+      // Only start dragging after moving a few pixels (prevents accidental drags)
+      if (dragDistance > 3) {
+        isDragging = true;
+      }
+
       if (!isDragging) return;
 
       const now = Date.now();
@@ -337,21 +349,37 @@ const ThreeEarth = () => {
       previousMousePosition = { x: event.clientX, y: event.clientY };
     };
 
-    const handleMouseUp = () => {
+    const handleMouseUp = (event: MouseEvent) => {
+      const dragDistance = Math.sqrt(
+        Math.pow(event.clientX - dragStart.x, 2) + Math.pow(event.clientY - dragStart.y, 2)
+      );
+      
+      // If it was just a click (no drag), don't interfere with Earth visibility
+      if (dragDistance < 3) {
+        // Reset auto-rotate after a short delay for clicks
+        setTimeout(() => setAutoRotate(true), 2000);
+      } else {
+        // If it was a drag, delay auto-rotate longer
+        setTimeout(() => setAutoRotate(true), 3000);
+      }
+      
       isDragging = false;
-      setTimeout(() => setAutoRotate(true), 2000);
     };
 
     const handleWheel = (event: WheelEvent) => {
       event.preventDefault();
-      camera.position.z += event.deltaY * 0.01;
+      const zoomSpeed = performanceMode ? 0.02 : 0.01;
+      camera.position.z += event.deltaY * zoomSpeed;
       camera.position.z = Math.max(8, Math.min(25, camera.position.z));
+      
+      // Don't reset auto-rotate on zoom
     };
 
     renderer.domElement.addEventListener('mousedown', handleMouseDown);
     renderer.domElement.addEventListener('mousemove', handleMouseMove);
     renderer.domElement.addEventListener('mouseup', handleMouseUp);
-    renderer.domElement.addEventListener('wheel', handleWheel);
+    renderer.domElement.addEventListener('mouseleave', handleMouseUp); // Handle mouse leaving canvas
+    renderer.domElement.addEventListener('wheel', handleWheel, { passive: false });
 
     // Optimized animation loop
     const animate = () => {
@@ -370,22 +398,24 @@ const ThreeEarth = () => {
           rotationVelocity.y *= 0.95;
         }
 
-        // Optimize marker animations - only update when needed
+        // Optimize marker animations - only update when needed and ensure visibility
         if (shouldUpdate && markersRef.current) {
           const cameraDistance = camera.position.distanceTo(new THREE.Vector3(0, 0, 0));
-          const visibilityRadius = getVisibilityRadius(cameraDistance);
           
           markersRef.current.children.forEach((marker) => {
             const mesh = marker as THREE.Mesh;
             if (mesh.userData.city) {
-              // Level of detail - hide distant markers
-              mesh.visible = mesh.userData.originalScale * visibilityRadius > 0.3;
+              // Ensure markers are always visible (remove problematic LOD)
+              mesh.visible = true;
               
-              if (mesh.visible && !performanceMode) {
+              if (!performanceMode) {
                 // Reduced frequency pulsing animation
                 mesh.userData.pulsePhase += 0.01;
                 const pulse = 1 + Math.sin(mesh.userData.pulsePhase) * 0.2;
                 mesh.scale.setScalar(mesh.userData.originalScale * pulse);
+              } else {
+                // In performance mode, keep static scale
+                mesh.scale.setScalar(mesh.userData.originalScale);
               }
             }
           });
@@ -422,6 +452,7 @@ const ThreeEarth = () => {
       renderer.domElement.removeEventListener('mousedown', handleMouseDown);
       renderer.domElement.removeEventListener('mousemove', handleMouseMove);
       renderer.domElement.removeEventListener('mouseup', handleMouseUp);
+      renderer.domElement.removeEventListener('mouseleave', handleMouseUp);
       renderer.domElement.removeEventListener('wheel', handleWheel);
       
       if (mountRef.current && renderer.domElement) {
