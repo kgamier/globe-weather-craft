@@ -39,7 +39,6 @@ const ThreeEarth = () => {
   const [selectedCity, setSelectedCity] = useState<City | null>(null);
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [performanceMode, setPerformanceMode] = useState<boolean>(false);
-  const [weatherApiKey, setWeatherApiKey] = useState<string>('');
   const [showWeatherForecast, setShowWeatherForecast] = useState(false);
   const [forecastCity, setForecastCity] = useState<City | null>(null);
   const [weatherData, setWeatherData] = useState<any>(null);
@@ -94,30 +93,23 @@ const ThreeEarth = () => {
     toast.success(`Focused on ${city.name}, ${city.country}`);
   };
 
-  // Weather API functions
+  // Weather API functions using Open-Meteo (free, no API key required)
   const fetchWeatherData = async (city: City) => {
-    if (!weatherApiKey) {
-      toast.error('Please enter your OpenWeatherMap API key first');
-      return;
-    }
-
     setLoadingWeather(true);
     setWeatherData(null);
     
     try {
       const response = await fetch(
-        `https://api.openweathermap.org/data/3.0/onecall?lat=${city.lat}&lon=${city.lng}&appid=${weatherApiKey}&units=metric&exclude=minutely,hourly,alerts`
+        `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lng}&current=temperature_2m,relative_humidity_2m,surface_pressure,wind_speed_10m,wind_direction_10m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max,relative_humidity_2m_max&timezone=auto&forecast_days=7`
       );
       
       if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error('Invalid API key. Please check your OpenWeatherMap API key.');
-        }
         throw new Error(`Weather API error: ${response.status}`);
       }
       
       const data = await response.json();
       setWeatherData(data);
+      toast.success(`Weather data loaded for ${city.name}`);
     } catch (error) {
       console.error('Weather fetch error:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to fetch weather data');
@@ -130,20 +122,6 @@ const ThreeEarth = () => {
     setForecastCity(city);
     setShowWeatherForecast(true);
     fetchWeatherData(city);
-  };
-
-  // Store API key in localStorage
-  useEffect(() => {
-    const storedKey = localStorage.getItem('weatherApiKey');
-    if (storedKey) {
-      setWeatherApiKey(storedKey);
-    }
-  }, []);
-
-  const saveApiKey = (key: string) => {
-    setWeatherApiKey(key);
-    localStorage.setItem('weatherApiKey', key);
-    toast.success('API key saved locally');
   };
 
   // Performance optimizations
@@ -664,63 +642,30 @@ const ThreeEarth = () => {
         )}
       </Card>
 
-      {/* API Key Setup */}
-      {!weatherApiKey && (
-        <Card className="absolute top-6 right-6 p-4 w-80 backdrop-blur-glass bg-card/70 border-glass-border shadow-glass border-orange-500/50 z-20">
-          <h3 className="text-lg font-semibold mb-3 text-orange-400">
-            Weather API Setup
-          </h3>
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Enter your OpenWeatherMap API key to enable city weather forecasts
+      {/* Weather Info Panel */}
+      <Card className="absolute top-6 right-6 p-4 w-80 backdrop-blur-glass bg-card/70 border-glass-border shadow-glass border-green-500/50 z-20">
+        <h3 className="text-lg font-semibold mb-3 text-green-400">
+          Weather Data
+        </h3>
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Click on any city to view real-time weather forecasts
+          </p>
+          <div className="text-xs text-muted-foreground space-y-1">
+            <p className="flex items-center gap-2">
+              <span className="w-2 h-2 bg-green-400 rounded-full"></span>
+              Powered by Open-Meteo API
             </p>
-            <div className="space-y-2">
-              <Label className="text-sm">API Key</Label>
-              <div className="flex space-x-2">
-                <Input
-                  type="password"
-                  placeholder="Enter API key..."
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      const target = e.target as HTMLInputElement;
-                      if (target.value.trim()) {
-                        saveApiKey(target.value.trim());
-                      }
-                    }
-                  }}
-                  className="bg-input/50"
-                />
-                <Button
-                  size="sm"
-                  onClick={(e) => {
-                    const input = e.currentTarget.parentElement?.querySelector('input') as HTMLInputElement;
-                    if (input?.value.trim()) {
-                      saveApiKey(input.value.trim());
-                    }
-                  }}
-                >
-                  Save
-                </Button>
-              </div>
-            </div>
-            <div className="text-xs text-muted-foreground space-y-1">
-              <p>Get your free API key from:</p>
-              <a 
-                href="https://openweathermap.org/api" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-primary hover:text-accent transition-colors underline"
-              >
-                openweathermap.org/api
-              </a>
-              <p className="text-orange-400">⚠️ For production apps, connect to Supabase for secure API storage</p>
-            </div>
+            <p>• Free global weather data</p>
+            <p>• No API key required</p>
+            <p>• Real-time atmospheric conditions</p>
+            <p>• 7-day forecasts</p>
           </div>
-        </Card>
-      )}
+        </div>
+      </Card>
 
-      {/* Weather Controls Panel - only show when API key is set */}
-      {weatherApiKey && (
+      {/* Controls Panel */}
+      {(
         <Card className="absolute top-6 left-6 p-6 w-80 backdrop-blur-glass bg-card/70 border-glass-border shadow-glass">
           <h3 className="text-lg font-semibold mb-4 bg-gradient-earth bg-clip-text text-transparent">
             Weather Parameters
@@ -790,9 +735,8 @@ const ThreeEarth = () => {
         </Card>
       )}
 
-      {/* Controls Panel - only show when API key is set */}
-      {weatherApiKey && (
-        <Card className="absolute bottom-6 right-6 p-4 w-72 backdrop-blur-glass bg-card/70 border-glass-border shadow-glass z-10">
+      {/* Controls Panel */}
+      <Card className="absolute bottom-6 right-6 p-4 w-72 backdrop-blur-glass bg-card/70 border-glass-border shadow-glass z-10">
           <h3 className="text-lg font-semibold mb-3 bg-gradient-earth bg-clip-text text-transparent">
             Earth Controls
           </h3>
@@ -834,7 +778,6 @@ const ThreeEarth = () => {
             </div>
           </div>
         </Card>
-      )}
 
       {/* Instructions */}
       <Card className="absolute bottom-6 left-1/2 transform -translate-x-1/2 p-4 backdrop-blur-glass bg-card/70 border-glass-border shadow-glass z-10">
@@ -849,6 +792,7 @@ const ThreeEarth = () => {
             <li>• <span className="text-cyan-400">Cyan dots</span> = major cities</li>
             <li>• <span className="text-red-400">Red dot</span> = selected city</li>
             <li>• Larger dots = bigger population</li>
+            <li>• <span className="text-green-400">✓ Free weather data</span> available for all cities</li>
           </ul>
         </div>
       </Card>
