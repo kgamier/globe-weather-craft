@@ -145,7 +145,7 @@ const ThreeEarth = () => {
 
   // Optimize marker creation with instanced geometry
   const createOptimizedMarker = (city: City, scene: THREE.Scene, earth: THREE.Mesh): THREE.Mesh => {
-    const markerGeometry = new THREE.SphereGeometry(0.05, 6, 6); // Reduced geometry complexity
+    const markerGeometry = new THREE.SphereGeometry(0.025, 6, 6); // Smaller, more refined dots
     
     let markerColor = city.isCapital ? 0xffd700 : 0x00ffff;
     
@@ -156,14 +156,15 @@ const ThreeEarth = () => {
     const markerMaterial = new THREE.MeshBasicMaterial({ 
       color: markerColor,
       transparent: true,
-      opacity: 0.9
+      opacity: 0.85
     });
     
     const marker = new THREE.Mesh(markerGeometry, markerMaterial);
     const position = latLngToVector3(city.lat, city.lng);
     marker.position.copy(position);
     
-    const populationScale = Math.max(0.5, Math.min(2.0, Math.log10(city.population) / 4));
+    // More conservative population scaling for refined appearance
+    const populationScale = Math.max(0.6, Math.min(1.4, Math.log10(city.population) / 5));
     marker.scale.setScalar(populationScale);
     
     marker.userData = { 
