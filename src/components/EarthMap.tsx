@@ -16,6 +16,8 @@ const EarthMap = () => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const [mapboxToken, setMapboxToken] = useState<string>('');
+  const [tokenError, setTokenError] = useState<string>('');
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   const [weatherParams, setWeatherParams] = useState<WeatherParams>({
     temperature: 20,
     humidity: 60,
@@ -42,6 +44,9 @@ const EarthMap = () => {
   useEffect(() => {
     if (!mapContainer.current || !mapboxToken) return;
 
+    setIsLoading(true);
+    setTokenError('');
+
     // Initialize map
     mapboxgl.accessToken = mapboxToken;
     
@@ -52,6 +57,23 @@ const EarthMap = () => {
       zoom: 2,
       center: [0, 20],
       pitch: 0,
+    });
+
+    // Handle map load success
+    map.current.on('load', () => {
+      setIsLoading(false);
+      console.log('Map loaded successfully!');
+    });
+
+    // Handle map errors
+    map.current.on('error', (error) => {
+      console.error('Mapbox error:', error);
+      setIsLoading(false);
+      if (error.error && error.error.message.includes('access token')) {
+        setTokenError('Invalid Mapbox token. Please check your token and try again.');
+      } else {
+        setTokenError('Failed to load map. Please check your connection and try again.');
+      }
     });
 
     // Add navigation controls
@@ -119,7 +141,10 @@ const EarthMap = () => {
 
     // Cleanup
     return () => {
-      map.current?.remove();
+      if (map.current) {
+        map.current.remove();
+        map.current = null;
+      }
     };
   }, [mapboxToken, weatherParams]);
 
@@ -127,7 +152,7 @@ const EarthMap = () => {
     setWeatherParams(prev => ({ ...prev, [key]: value }));
   };
 
-  if (!mapboxToken) {
+  if (!mapboxToken || tokenError) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gradient-space">
         <Card className="p-8 max-w-md mx-auto backdrop-blur-glass bg-card/70 border-glass-border shadow-glass">
@@ -138,6 +163,13 @@ const EarthMap = () => {
             <p className="text-muted-foreground text-center">
               Enter your Mapbox public token to view the interactive Earth
             </p>
+            
+            {tokenError && (
+              <div className="p-3 bg-destructive/20 border border-destructive/30 rounded-lg">
+                <p className="text-sm text-destructive-foreground">{tokenError}</p>
+              </div>
+            )}
+            
             <div className="space-y-2">
               <Label htmlFor="mapbox-token">Mapbox Public Token</Label>
               <Input
@@ -145,21 +177,36 @@ const EarthMap = () => {
                 type="password"
                 placeholder="pk.eyJ1Ijoi..."
                 value={mapboxToken}
-                onChange={(e) => setMapboxToken(e.target.value)}
+                onChange={(e) => {
+                  setMapboxToken(e.target.value);
+                  setTokenError('');
+                }}
                 className="bg-input/50"
               />
             </div>
-            <p className="text-sm text-muted-foreground">
-              Get your token from{' '}
-              <a 
-                href="https://mapbox.com/" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-primary hover:text-accent transition-colors"
-              >
-                mapbox.com
-              </a>
-            </p>
+            
+            <div className="space-y-2 text-sm text-muted-foreground">
+              <p>
+                Get your free token from{' '}
+                <a 
+                  href="https://account.mapbox.com/access-tokens/" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-primary hover:text-accent transition-colors underline"
+                >
+                  Mapbox Account → Access Tokens
+                </a>
+              </p>
+              <div className="bg-secondary/20 p-3 rounded-lg">
+                <p className="font-medium mb-1">Quick Setup:</p>
+                <ol className="text-xs space-y-1 list-decimal list-inside">
+                  <li>Sign up at mapbox.com (free)</li>
+                  <li>Go to Account → Access Tokens</li>
+                  <li>Copy your "Default public token"</li>
+                  <li>Paste it above (starts with "pk.")</li>
+                </ol>
+              </div>
+            </div>
           </div>
         </Card>
       </div>
