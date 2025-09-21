@@ -308,71 +308,79 @@ const ThreeEarth = () => {
       camera.lookAt(0, 0, 0);
     }
 
-    // Optimized mouse controls with better event handling
-    let isDragging = false;
-    let dragStart = { x: 0, y: 0 };
-    let previousMousePosition = { x: 0, y: 0 };
+    // Hold left-click and drag navigation
+    let isMouseDown = false;
+    let isRotating = false;
+    let lastMousePosition = { x: 0, y: 0 };
     let rotationVelocity = { x: 0, y: 0 };
-    let lastMouseMove = 0;
 
     const handleMouseDown = (event: MouseEvent) => {
-      isDragging = false; // Don't set to true immediately
-      dragStart = { x: event.clientX, y: event.clientY };
-      previousMousePosition = { x: event.clientX, y: event.clientY };
+      if (event.button !== 0) return; // Only left click
+      isMouseDown = true;
+      isRotating = false;
+      lastMousePosition = { x: event.clientX, y: event.clientY };
       setAutoRotate(false);
+      
+      // Change cursor to indicate dragging mode
+      renderer.domElement.style.cursor = 'grabbing';
     };
 
     const handleMouseMove = (event: MouseEvent) => {
-      const dragDistance = Math.sqrt(
-        Math.pow(event.clientX - dragStart.x, 2) + Math.pow(event.clientY - dragStart.y, 2)
-      );
+      if (!isMouseDown) return;
       
-      // Only start dragging after moving a few pixels (prevents accidental drags)
-      if (dragDistance > 3) {
-        isDragging = true;
-      }
-
-      if (!isDragging) return;
-
-      const now = Date.now();
-      if (now - lastMouseMove < (performanceMode ? 32 : 16)) return; // Throttle mouse events
-      lastMouseMove = now;
-
+      isRotating = true;
+      
       const deltaMove = {
-        x: event.clientX - previousMousePosition.x,
-        y: event.clientY - previousMousePosition.y
+        x: event.clientX - lastMousePosition.x,
+        y: event.clientY - lastMousePosition.y
       };
 
-      rotationVelocity.x = deltaMove.y * 0.005;
-      rotationVelocity.y = deltaMove.x * 0.005;
+      // Apply rotation based on mouse movement
+      if (earthRef.current) {
+        earthRef.current.rotation.y += deltaMove.x * 0.005;
+        earthRef.current.rotation.x += deltaMove.y * 0.005;
+        
+        // Clamp vertical rotation to prevent flipping
+        earthRef.current.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, earthRef.current.rotation.x));
+      }
 
-      previousMousePosition = { x: event.clientX, y: event.clientY };
+      lastMousePosition = { x: event.clientX, y: event.clientY };
     };
 
     const handleMouseUp = (event: MouseEvent) => {
-      const dragDistance = Math.sqrt(
-        Math.pow(event.clientX - dragStart.x, 2) + Math.pow(event.clientY - dragStart.y, 2)
-      );
+      if (event.button !== 0) return; // Only left click
+      isMouseDown = false;
       
-      // If it was just a click (no drag), don't interfere with Earth visibility
-      if (dragDistance < 3) {
-        // Reset auto-rotate after a short delay for clicks
-        setTimeout(() => setAutoRotate(true), 2000);
+      // Reset cursor
+      renderer.domElement.style.cursor = 'grab';
+      
+      // If we were rotating, delay auto-rotate resumption
+      if (isRotating) {
+        setTimeout(() => {
+          if (!isMouseDown) { // Only resume if not currently dragging
+            setAutoRotate(true);
+          }
+        }, 3000);
       } else {
-        // If it was a drag, delay auto-rotate longer
-        setTimeout(() => setAutoRotate(true), 3000);
+        // If it was just a click (no rotation), resume auto-rotate sooner
+        setTimeout(() => {
+          if (!isMouseDown) {
+            setAutoRotate(true);
+          }
+        }, 1000);
       }
       
-      isDragging = false;
+      isRotating = false;
     };
 
+    // Set initial cursor style
+    renderer.domElement.style.cursor = 'grab';
+    
     const handleWheel = (event: WheelEvent) => {
       event.preventDefault();
-      const zoomSpeed = performanceMode ? 0.02 : 0.01;
+      const zoomSpeed = performanceMode ? 0.015 : 0.01;
       camera.position.z += event.deltaY * zoomSpeed;
-      camera.position.z = Math.max(8, Math.min(25, camera.position.z));
-      
-      // Don't reset auto-rotate on zoom
+      camera.position.z = Math.max(6, Math.min(30, camera.position.z));
     };
 
     renderer.domElement.addEventListener('mousedown', handleMouseDown);
@@ -388,43 +396,35 @@ const ThreeEarth = () => {
       const time = Date.now() * 0.001;
       const shouldUpdate = shouldUpdateMarker(Date.now());
 
-      if (earthRef.current) {
-        if (autoRotate && !isDragging) {
-          earthRef.current.rotation.y += performanceMode ? 0.001 : 0.002;
-        } else {
-          earthRef.current.rotation.x += rotationVelocity.x;
-          earthRef.current.rotation.y += rotationVelocity.y;
-          rotationVelocity.x *= 0.95;
-          rotationVelocity.y *= 0.95;
-        }
-
-        // Optimize marker animations - only update when needed and ensure visibility
-        if (shouldUpdate && markersRef.current) {
-          const cameraDistance = camera.position.distanceTo(new THREE.Vector3(0, 0, 0));
-          
-          markersRef.current.children.forEach((marker) => {
-            const mesh = marker as THREE.Mesh;
-            if (mesh.userData.city) {
-              // Ensure markers are always visible (remove problematic LOD)
-              mesh.visible = true;
-              
-              if (!performanceMode) {
-                // Reduced frequency pulsing animation
-                mesh.userData.pulsePhase += 0.01;
-                const pulse = 1 + Math.sin(mesh.userData.pulsePhase) * 0.2;
-                mesh.scale.setScalar(mesh.userData.originalScale * pulse);
-              } else {
-                // In performance mode, keep static scale
-                mesh.scale.setScalar(mesh.userData.originalScale);
-              }
-            }
-          });
-          
-          lastUpdateTime.current = Date.now();
-        }
+      // Only apply auto-rotation if not manually controlling
+      if (earthRef.current && autoRotate && !isMouseDown) {
+        earthRef.current.rotation.y += performanceMode ? 0.001 : 0.002;
       }
 
-      if (cloudsRef.current && !performanceMode) {
+      // Optimize marker animations - only update when needed and ensure visibility
+      if (shouldUpdate && markersRef.current) {
+        markersRef.current.children.forEach((marker) => {
+          const mesh = marker as THREE.Mesh;
+          if (mesh.userData.city) {
+            // Ensure markers are always visible
+            mesh.visible = true;
+            
+            if (!performanceMode) {
+              // Reduced frequency pulsing animation
+              mesh.userData.pulsePhase += 0.01;
+              const pulse = 1 + Math.sin(mesh.userData.pulsePhase) * 0.2;
+              mesh.scale.setScalar(mesh.userData.originalScale * pulse);
+            } else {
+              // In performance mode, keep static scale
+              mesh.scale.setScalar(mesh.userData.originalScale);
+            }
+          }
+        });
+        
+        lastUpdateTime.current = Date.now();
+      }
+
+      if (cloudsRef.current && !performanceMode && !isMouseDown) {
         cloudsRef.current.rotation.y += 0.0005;
       }
 
@@ -694,8 +694,8 @@ const ThreeEarth = () => {
         <div className="text-sm space-y-2">
           <p className="font-medium text-foreground">Controls:</p>
           <ul className="text-muted-foreground space-y-1 text-xs">
+            <li>• <span className="font-medium">Hold left-click + drag</span> to rotate Earth</li>
             <li>• Search cities above to focus on them</li>
-            <li>• Click and drag to rotate Earth</li>
             <li>• Scroll to zoom in/out</li>
             <li>• <span className="text-yellow-400">Gold dots</span> = capitals</li>
             <li>• <span className="text-cyan-400">Cyan dots</span> = major cities</li>
