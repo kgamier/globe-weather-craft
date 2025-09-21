@@ -27,6 +27,10 @@ const ThreeEarth = () => {
   const [autoRotate, setAutoRotate] = useState(true);
   const [showCapitalsOnly, setShowCapitalsOnly] = useState(false);
   const [selectedRegion, setSelectedRegion] = useState<string>('All');
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [searchResults, setSearchResults] = useState<City[]>([]);
+  const [selectedCity, setSelectedCity] = useState<City | null>(null);
+  const [showSearchResults, setShowSearchResults] = useState(false);
   const [weatherParams, setWeatherParams] = useState<WeatherParams>({
     temperature: 20,
     humidity: 60,
@@ -47,6 +51,34 @@ const ThreeEarth = () => {
     }
     
     return cities;
+  };
+
+  // Search functionality
+  const handleSearch = (term: string) => {
+    setSearchTerm(term);
+    
+    if (term.trim().length < 2) {
+      setSearchResults([]);
+      setShowSearchResults(false);
+      return;
+    }
+    
+    const results = worldCities.filter(city =>
+      city.name.toLowerCase().includes(term.toLowerCase()) ||
+      city.country.toLowerCase().includes(term.toLowerCase())
+    ).slice(0, 8); // Limit to 8 results for better UX
+    
+    setSearchResults(results);
+    setShowSearchResults(results.length > 0);
+  };
+
+  const selectCity = (city: City) => {
+    setSelectedCity(city);
+    setSearchTerm(city.name);
+    setShowSearchResults(false);
+    setAutoRotate(false);
+    
+    toast.success(`Focused on ${city.name}, ${city.country}`);
   };
 
   const regions = ['All', 'North America', 'South America', 'Europe', 'Asia', 'Africa', 'Oceania'];
@@ -177,7 +209,13 @@ const ThreeEarth = () => {
         const markerGeometry = new THREE.SphereGeometry(0.05, 8, 8);
         
         // Different colors for capitals vs major cities
-        const markerColor = city.isCapital ? 0xffd700 : 0x00ffff; // Gold for capitals, cyan for major cities
+        let markerColor = city.isCapital ? 0xffd700 : 0x00ffff; // Gold for capitals, cyan for major cities
+        
+        // Highlight selected city
+        if (selectedCity && selectedCity.name === city.name && selectedCity.country === city.country) {
+          markerColor = 0xff4444; // Red for selected city
+        }
+        
         const markerMaterial = new THREE.MeshBasicMaterial({ 
           color: markerColor,
           transparent: true,
@@ -229,6 +267,19 @@ const ThreeEarth = () => {
     const clouds = new THREE.Mesh(cloudsGeometry, cloudsMaterial);
     scene.add(clouds);
     cloudsRef.current = clouds;
+
+    // Handle city focusing
+    if (selectedCity && earthRef.current) {
+      const cityPosition = latLngToVector3(selectedCity.lat, selectedCity.lng, 8);
+      
+      // Animate camera to look at the city
+      const currentPosition = camera.position.clone();
+      const targetPosition = cityPosition.clone().normalize().multiplyScalar(12);
+      
+      // Smooth animation to the city
+      camera.position.lerp(targetPosition, 0.02);
+      camera.lookAt(0, 0, 0);
+    }
 
     // Mouse controls
     let isDragging = false;
@@ -331,7 +382,7 @@ const ThreeEarth = () => {
       }
       renderer.dispose();
     };
-  }, [autoRotate, showNightLights, showCapitalsOnly, selectedRegion]);
+  }, [autoRotate, showNightLights, showCapitalsOnly, selectedRegion, selectedCity]);
 
   const updateWeatherParam = (key: keyof WeatherParams, value: number) => {
     setWeatherParams(prev => ({ ...prev, [key]: value }));
@@ -359,6 +410,83 @@ const ThreeEarth = () => {
       {/* 3D Earth Container */}
       <div ref={mountRef} className="absolute inset-0" />
       
+      {/* Search Panel */}
+      <Card className="absolute top-6 left-1/2 transform -translate-x-1/2 p-4 w-96 backdrop-blur-glass bg-card/70 border-glass-border shadow-glass">
+        <h3 className="text-lg font-semibold mb-3 bg-gradient-earth bg-clip-text text-transparent">
+          Search Cities
+        </h3>
+        
+        <div className="relative">
+          <input
+            type="text"
+            placeholder="Search cities or countries..."
+            value={searchTerm}
+            onChange={(e) => handleSearch(e.target.value)}
+            className="w-full px-4 py-2 bg-input/50 border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary"
+          />
+          
+          {/* Search Results Dropdown */}
+          {showSearchResults && searchResults.length > 0 && (
+            <div className="absolute top-full left-0 right-0 mt-1 bg-card/90 backdrop-blur-glass border border-border rounded-lg shadow-glass max-h-64 overflow-y-auto z-50">
+              {searchResults.map((city, index) => (
+                <button
+                  key={`${city.name}-${city.country}-${index}`}
+                  onClick={() => selectCity(city)}
+                  className="w-full px-4 py-3 text-left hover:bg-secondary/50 transition-colors border-b border-border/30 last:border-b-0 focus:outline-none focus:bg-secondary/50"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-medium text-foreground">
+                        {city.name}
+                        {city.isCapital && <span className="ml-2 text-yellow-400 text-xs">★ CAPITAL</span>}
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {city.country} • {city.region}
+                      </div>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {(city.population / 1000000).toFixed(1)}M
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+          
+          {/* No Results */}
+          {showSearchResults && searchResults.length === 0 && searchTerm.length >= 2 && (
+            <div className="absolute top-full left-0 right-0 mt-1 bg-card/90 backdrop-blur-glass border border-border rounded-lg shadow-glass p-4 z-50">
+              <p className="text-muted-foreground text-center">No cities found matching "{searchTerm}"</p>
+            </div>
+          )}
+        </div>
+        
+        {/* Clear Selection */}
+        {selectedCity && (
+          <div className="mt-3 p-3 bg-secondary/30 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-medium text-sm">Focused on:</div>
+                <div className="text-primary font-semibold">
+                  {selectedCity.name}, {selectedCity.country}
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setSelectedCity(null);
+                  setSearchTerm('');
+                  setAutoRotate(true);
+                }}
+              >
+                Clear
+              </Button>
+            </div>
+          </div>
+        )}
+      </Card>
+
       {/* Weather Controls Panel */}
       <Card className="absolute top-6 left-6 p-6 w-80 backdrop-blur-glass bg-card/70 border-glass-border shadow-glass">
         <h3 className="text-lg font-semibold mb-4 bg-gradient-earth bg-clip-text text-transparent">
@@ -477,12 +605,13 @@ const ThreeEarth = () => {
         <div className="text-sm space-y-2">
           <p className="font-medium text-foreground">Controls:</p>
           <ul className="text-muted-foreground space-y-1 text-xs">
+            <li>• Search cities above to focus on them</li>
             <li>• Click and drag to rotate Earth</li>
             <li>• Scroll to zoom in/out</li>
             <li>• <span className="text-yellow-400">Gold dots</span> = capitals</li>
             <li>• <span className="text-cyan-400">Cyan dots</span> = major cities</li>
+            <li>• <span className="text-red-400">Red dot</span> = selected city</li>
             <li>• Larger dots = bigger population</li>
-            <li>• Weather parameters affect all cities</li>
           </ul>
         </div>
       </Card>
