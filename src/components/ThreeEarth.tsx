@@ -4,8 +4,10 @@ import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
+import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { worldCities, getCityCount, type City } from '@/data/worldCities';
+import WeatherForecast from './WeatherForecast';
 
 interface WeatherParams {
   temperature: number;
@@ -23,6 +25,8 @@ const ThreeEarth = () => {
   const frameRef = useRef<number>();
   const cameraRef = useRef<THREE.PerspectiveCamera>();
   const markersRef = useRef<THREE.Group>();
+  const raycasterRef = useRef<THREE.Raycaster>();
+  const mouseRef = useRef<THREE.Vector2>();
   const lastUpdateTime = useRef<number>(0);
   
   const [isLoading, setIsLoading] = useState(true);
@@ -35,6 +39,11 @@ const ThreeEarth = () => {
   const [selectedCity, setSelectedCity] = useState<City | null>(null);
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [performanceMode, setPerformanceMode] = useState<boolean>(false);
+  const [weatherApiKey, setWeatherApiKey] = useState<string>('');
+  const [showWeatherForecast, setShowWeatherForecast] = useState(false);
+  const [forecastCity, setForecastCity] = useState<City | null>(null);
+  const [weatherData, setWeatherData] = useState<any>(null);
+  const [loadingWeather, setLoadingWeather] = useState(false);
   const [weatherParams, setWeatherParams] = useState<WeatherParams>({
     temperature: 20,
     humidity: 60,
@@ -83,6 +92,58 @@ const ThreeEarth = () => {
     setAutoRotate(false);
     
     toast.success(`Focused on ${city.name}, ${city.country}`);
+  };
+
+  // Weather API functions
+  const fetchWeatherData = async (city: City) => {
+    if (!weatherApiKey) {
+      toast.error('Please enter your OpenWeatherMap API key first');
+      return;
+    }
+
+    setLoadingWeather(true);
+    setWeatherData(null);
+    
+    try {
+      const response = await fetch(
+        `https://api.openweathermap.org/data/3.0/onecall?lat=${city.lat}&lon=${city.lng}&appid=${weatherApiKey}&units=metric&exclude=minutely,hourly,alerts`
+      );
+      
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Invalid API key. Please check your OpenWeatherMap API key.');
+        }
+        throw new Error(`Weather API error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      setWeatherData(data);
+    } catch (error) {
+      console.error('Weather fetch error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to fetch weather data');
+    } finally {
+      setLoadingWeather(false);
+    }
+  };
+
+  const handleCityClick = (city: City) => {
+    setForecastCity(city);
+    setShowWeatherForecast(true);
+    fetchWeatherData(city);
+  };
+
+  // Store API key in localStorage
+  useEffect(() => {
+    const storedKey = localStorage.getItem('weatherApiKey');
+    if (storedKey) {
+      setWeatherApiKey(storedKey);
+    }
+  }, []);
+
+  const saveApiKey = (key: string) => {
+    setWeatherApiKey(key);
+    localStorage.setItem('weatherApiKey', key);
+    toast.success('API key saved locally');
   };
 
   // Performance optimizations
@@ -148,6 +209,12 @@ const ThreeEarth = () => {
   useEffect(() => {
     if (!mountRef.current) return;
 
+    // Setup raycaster for click detection
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+    raycasterRef.current = raycaster;
+    mouseRef.current = mouse;
+    
     // Scene setup
     const scene = new THREE.Scene();
     sceneRef.current = scene;
@@ -249,7 +316,9 @@ const ThreeEarth = () => {
 
       const earth = new THREE.Mesh(earthGeometry, earthMaterial);
       earth.receiveShadow = true;
-      scene.add(earth);
+      if (sceneRef.current) {
+        sceneRef.current.add(earth);
+      }
       earthRef.current = earth;
 
       // Add city markers with performance optimization
@@ -262,7 +331,7 @@ const ThreeEarth = () => {
       const citiesToRender = filteredCities.slice(0, maxMarkers);
       
       citiesToRender.forEach(city => {
-        const marker = createOptimizedMarker(city, scene, earth);
+        const marker = createOptimizedMarker(city, sceneRef.current!, earth);
         markersGroup.add(marker);
       });
       
@@ -278,7 +347,9 @@ const ThreeEarth = () => {
         wireframe: false 
       });
       const earth = new THREE.Mesh(earthGeometry, earthMaterial);
-      scene.add(earth);
+      if (sceneRef.current) {
+        sceneRef.current.add(earth);
+      }
       earthRef.current = earth;
       setIsLoading(false);
       toast.success("Earth loaded (basic mode)");
@@ -292,7 +363,9 @@ const ThreeEarth = () => {
       opacity: performanceMode ? 0.1 : 0.2, // Reduce opacity in performance mode
     });
     const clouds = new THREE.Mesh(cloudsGeometry, cloudsMaterial);
-    scene.add(clouds);
+    if (sceneRef.current) {
+      sceneRef.current.add(clouds);
+    }
     cloudsRef.current = clouds;
 
     // Handle city focusing
@@ -308,7 +381,7 @@ const ThreeEarth = () => {
       camera.lookAt(0, 0, 0);
     }
 
-    // Hold left-click and drag navigation
+    // Hold left-click and drag navigation with city click detection
     let isMouseDown = false;
     let isRotating = false;
     let lastMousePosition = { x: 0, y: 0 };
@@ -319,7 +392,6 @@ const ThreeEarth = () => {
       isMouseDown = true;
       isRotating = false;
       lastMousePosition = { x: event.clientX, y: event.clientY };
-      setAutoRotate(false);
       
       // Change cursor to indicate dragging mode
       renderer.domElement.style.cursor = 'grabbing';
@@ -328,20 +400,24 @@ const ThreeEarth = () => {
     const handleMouseMove = (event: MouseEvent) => {
       if (!isMouseDown) return;
       
-      isRotating = true;
-      
       const deltaMove = {
         x: event.clientX - lastMousePosition.x,
         y: event.clientY - lastMousePosition.y
       };
 
-      // Apply rotation based on mouse movement
-      if (earthRef.current) {
-        earthRef.current.rotation.y += deltaMove.x * 0.005;
-        earthRef.current.rotation.x += deltaMove.y * 0.005;
+      // If mouse moved enough, consider it rotation
+      if (Math.abs(deltaMove.x) > 2 || Math.abs(deltaMove.y) > 2) {
+        isRotating = true;
+        setAutoRotate(false);
         
-        // Clamp vertical rotation to prevent flipping
-        earthRef.current.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, earthRef.current.rotation.x));
+        // Apply rotation based on mouse movement
+        if (earthRef.current) {
+          earthRef.current.rotation.y += deltaMove.x * 0.005;
+          earthRef.current.rotation.x += deltaMove.y * 0.005;
+          
+          // Clamp vertical rotation to prevent flipping
+          earthRef.current.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, earthRef.current.rotation.x));
+        }
       }
 
       lastMousePosition = { x: event.clientX, y: event.clientY };
@@ -349,6 +425,25 @@ const ThreeEarth = () => {
 
     const handleMouseUp = (event: MouseEvent) => {
       if (event.button !== 0) return; // Only left click
+      
+      // If it was just a click (no rotation), check for city clicks
+      if (!isRotating && markersRef.current && cameraRef.current) {
+        const rect = renderer.domElement.getBoundingClientRect();
+        mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+        
+        raycaster.setFromCamera(mouse, cameraRef.current);
+        const intersects = raycaster.intersectObjects(markersRef.current.children, true);
+        
+        if (intersects.length > 0) {
+          const clickedObject = intersects[0].object;
+          if (clickedObject.userData && clickedObject.userData.city) {
+            handleCityClick(clickedObject.userData.city);
+            toast.success(`Getting forecast for ${clickedObject.userData.city.name}`);
+          }
+        }
+      }
+      
       isMouseDown = false;
       
       // Reset cursor
@@ -361,13 +456,6 @@ const ThreeEarth = () => {
             setAutoRotate(true);
           }
         }, 3000);
-      } else {
-        // If it was just a click (no rotation), resume auto-rotate sooner
-        setTimeout(() => {
-          if (!isMouseDown) {
-            setAutoRotate(true);
-          }
-        }, 1000);
       }
       
       isRotating = false;
@@ -428,7 +516,7 @@ const ThreeEarth = () => {
         cloudsRef.current.rotation.y += 0.0005;
       }
 
-      renderer.render(scene, camera);
+      renderer.render(sceneRef.current!, camera);
     };
 
     animate();
@@ -576,74 +664,131 @@ const ThreeEarth = () => {
         )}
       </Card>
 
-      {/* Weather Controls Panel */}
-      <Card className="absolute top-6 left-6 p-6 w-80 backdrop-blur-glass bg-card/70 border-glass-border shadow-glass">
-        <h3 className="text-lg font-semibold mb-4 bg-gradient-earth bg-clip-text text-transparent">
-          Weather Parameters
-        </h3>
-        
-        <div className="space-y-6">
-          {/* Temperature */}
-          <div>
-            <Label className="text-sm font-medium mb-2 block">
-              Temperature: {weatherParams.temperature}°C
-            </Label>
-            <Slider
-              value={[weatherParams.temperature]}
-              onValueChange={(value) => updateWeatherParam('temperature', value[0])}
-              max={50}
-              min={-30}
-              step={1}
-              className="w-full"
-            />
+      {/* API Key Setup */}
+      {!weatherApiKey && (
+        <Card className="absolute top-6 right-6 p-4 w-80 backdrop-blur-glass bg-card/70 border-glass-border shadow-glass border-orange-500/50">
+          <h3 className="text-lg font-semibold mb-3 text-orange-400">
+            Weather API Setup
+          </h3>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Enter your OpenWeatherMap API key to enable city weather forecasts
+            </p>
+            <div className="space-y-2">
+              <Label className="text-sm">API Key</Label>
+              <div className="flex space-x-2">
+                <Input
+                  type="password"
+                  placeholder="Enter API key..."
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      const target = e.target as HTMLInputElement;
+                      if (target.value.trim()) {
+                        saveApiKey(target.value.trim());
+                      }
+                    }
+                  }}
+                  className="bg-input/50"
+                />
+                <Button
+                  size="sm"
+                  onClick={(e) => {
+                    const input = e.currentTarget.parentElement?.querySelector('input') as HTMLInputElement;
+                    if (input?.value.trim()) {
+                      saveApiKey(input.value.trim());
+                    }
+                  }}
+                >
+                  Save
+                </Button>
+              </div>
+            </div>
+            <div className="text-xs text-muted-foreground space-y-1">
+              <p>Get your free API key from:</p>
+              <a 
+                href="https://openweathermap.org/api" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-primary hover:text-accent transition-colors underline"
+              >
+                openweathermap.org/api
+              </a>
+              <p className="text-orange-400">⚠️ For production apps, connect to Supabase for secure API storage</p>
+            </div>
           </div>
+        </Card>
+      )}
 
-          {/* Humidity */}
-          <div>
-            <Label className="text-sm font-medium mb-2 block">
-              Humidity: {weatherParams.humidity}%
-            </Label>
-            <Slider
-              value={[weatherParams.humidity]}
-              onValueChange={(value) => updateWeatherParam('humidity', value[0])}
-              max={100}
-              min={0}
-              step={1}
-              className="w-full"
-            />
-          </div>
+      {/* Weather Controls Panel - only show when API key is set */}
+      {weatherApiKey && (
+        <Card className="absolute top-6 left-6 p-6 w-80 backdrop-blur-glass bg-card/70 border-glass-border shadow-glass">
+          <h3 className="text-lg font-semibold mb-4 bg-gradient-earth bg-clip-text text-transparent">
+            Weather Parameters
+          </h3>
+          
+          <div className="space-y-6">
+            {/* Temperature */}
+            <div>
+              <Label className="text-sm font-medium mb-2 block">
+                Temperature: {weatherParams.temperature}°C
+              </Label>
+              <Slider
+                value={[weatherParams.temperature]}
+                onValueChange={(value) => updateWeatherParam('temperature', value[0])}
+                max={50}
+                min={-30}
+                step={1}
+                className="w-full"
+              />
+            </div>
 
-          {/* Pressure */}
-          <div>
-            <Label className="text-sm font-medium mb-2 block">
-              Pressure: {weatherParams.pressure} hPa
-            </Label>
-            <Slider
-              value={[weatherParams.pressure]}
-              onValueChange={(value) => updateWeatherParam('pressure', value[0])}
-              max={1050}
-              min={950}
-              step={1}
-              className="w-full"
-            />
-          </div>
+            {/* Humidity */}
+            <div>
+              <Label className="text-sm font-medium mb-2 block">
+                Humidity: {weatherParams.humidity}%
+              </Label>
+              <Slider
+                value={[weatherParams.humidity]}
+                onValueChange={(value) => updateWeatherParam('humidity', value[0])}
+                max={100}
+                min={0}
+                step={1}
+                className="w-full"
+              />
+            </div>
 
-          {/* Wind Speed */}
-          <div>
-            <Label className="text-sm font-medium mb-2 block">
-              Wind Speed: {weatherParams.windSpeed} km/h
-            </Label>
-            <Slider
-              value={[weatherParams.windSpeed]}
-              onValueChange={(value) => updateWeatherParam('windSpeed', value[0])}
-              max={100}
-              min={0}
-              step={1}
-              className="w-full"
-            />
+            {/* Pressure */}
+            <div>
+              <Label className="text-sm font-medium mb-2 block">
+                Pressure: {weatherParams.pressure} hPa
+              </Label>
+              <Slider
+                value={[weatherParams.pressure]}
+                onValueChange={(value) => updateWeatherParam('pressure', value[0])}
+                max={1050}
+                min={950}
+                step={1}
+                className="w-full"
+              />
+            </div>
+
+            {/* Wind Speed */}
+            <div>
+              <Label className="text-sm font-medium mb-2 block">
+                Wind Speed: {weatherParams.windSpeed} km/h
+              </Label>
+              <Slider
+                value={[weatherParams.windSpeed]}
+                onValueChange={(value) => updateWeatherParam('windSpeed', value[0])}
+                max={100}
+                min={0}
+                step={1}
+                className="w-full"
+              />
+            </div>
           </div>
-        </div>
-      </Card>
+        </Card>
+      )}
 
       {/* Controls Panel */}
       <Card className="absolute top-6 right-6 p-4 w-72 backdrop-blur-glass bg-card/70 border-glass-border shadow-glass">
@@ -695,6 +840,7 @@ const ThreeEarth = () => {
           <p className="font-medium text-foreground">Controls:</p>
           <ul className="text-muted-foreground space-y-1 text-xs">
             <li>• <span className="font-medium">Hold left-click + drag</span> to rotate Earth</li>
+            <li>• <span className="font-medium">Click city dots</span> to view weather forecast</li>
             <li>• Search cities above to focus on them</li>
             <li>• Scroll to zoom in/out</li>
             <li>• <span className="text-yellow-400">Gold dots</span> = capitals</li>
@@ -707,6 +853,20 @@ const ThreeEarth = () => {
 
       {/* Atmospheric overlay */}
       <div className="absolute inset-0 bg-gradient-atmosphere pointer-events-none" />
+
+      {/* Weather Forecast Modal */}
+      {showWeatherForecast && forecastCity && (
+        <WeatherForecast
+          city={forecastCity}
+          weatherData={weatherData}
+          isLoading={loadingWeather}
+          onClose={() => {
+            setShowWeatherForecast(false);
+            setForecastCity(null);
+            setWeatherData(null);
+          }}
+        />
+      )}
     </div>
   );
 };
