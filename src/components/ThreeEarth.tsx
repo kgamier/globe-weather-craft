@@ -460,7 +460,7 @@ const ThreeEarth = () => {
       }
       renderer.dispose();
     };
-  }, [autoRotate, showNightLights, showCapitalsOnly, selectedRegion, selectedCity, performanceMode]);
+  }, []);
 
   const updateWeatherParam = (key: keyof WeatherParams, value: number) => {
     setWeatherParams(prev => ({ ...prev, [key]: value }));
