@@ -685,7 +685,51 @@ const ThreeEarth = () => {
         </div>
       </Card>
 
-      {/* Controls Panel */}
+      {/* Earth Controls Panel - Show when forecast is NOT open */}
+      {!showWeatherForecast && (
+        <Card className="absolute bottom-6 right-6 p-4 w-72 backdrop-blur-glass bg-card/70 border-glass-border shadow-glass z-10">
+          <h3 className="text-lg font-semibold mb-3 bg-gradient-earth bg-clip-text text-transparent">
+            Earth Controls
+          </h3>
+          
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm">Auto Rotate</Label>
+              <Button
+                variant={autoRotate ? "default" : "outline"}
+                size="sm"
+                onClick={() => setAutoRotate(!autoRotate)}
+              >
+                {autoRotate ? 'ON' : 'OFF'}
+              </Button>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <Label className="text-sm">Night Lights</Label>
+              <Button
+                variant={showNightLights ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShowNightLights(!showNightLights)}
+              >
+                {showNightLights ? 'ON' : 'OFF'}
+              </Button>
+            </div>
+
+            <div className="pt-2 border-t border-border/50">
+              <div className="text-xs space-y-1">
+                <div className="flex justify-between">
+                  <span>Cities:</span>
+                  <span className="text-primary font-medium">{worldCities.length}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Data:</span>
+                  <span className="text-accent">NASA Blue Marble</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
       {(
         <Card className="absolute top-6 left-6 p-6 w-80 backdrop-blur-glass bg-card/70 border-glass-border shadow-glass">
           <h3 className="text-lg font-semibold mb-4 bg-gradient-earth bg-clip-text text-transparent">
@@ -756,49 +800,117 @@ const ThreeEarth = () => {
         </Card>
       )}
 
-      {/* Controls Panel */}
-      <Card className="absolute bottom-6 right-6 p-4 w-72 backdrop-blur-glass bg-card/70 border-glass-border shadow-glass z-10">
-          <h3 className="text-lg font-semibold mb-3 bg-gradient-earth bg-clip-text text-transparent">
-            Earth Controls
-          </h3>
-          
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm">Auto Rotate</Label>
-              <Button
-                variant={autoRotate ? "default" : "outline"}
-                size="sm"
-                onClick={() => setAutoRotate(!autoRotate)}
-              >
-                {autoRotate ? 'ON' : 'OFF'}
-              </Button>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <Label className="text-sm">Night Lights</Label>
-              <Button
-                variant={showNightLights ? "default" : "outline"}
-                size="sm"
-                onClick={() => setShowNightLights(!showNightLights)}
-              >
-                {showNightLights ? 'ON' : 'OFF'}
-              </Button>
-            </div>
-
-            <div className="pt-2 border-t border-border/50">
-              <div className="text-xs space-y-1">
-                <div className="flex justify-between">
-                  <span>Cities:</span>
-                  <span className="text-primary font-medium">{worldCities.length}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Data:</span>
-                  <span className="text-accent">NASA Blue Marble</span>
-                </div>
-              </div>
-            </div>
+      {/* Weather Controls Panel - Show when forecast is open */}
+      <Card className="absolute top-6 left-6 p-6 w-80 backdrop-blur-glass bg-card/70 border-glass-border shadow-glass z-10">
+        <h3 className="text-lg font-semibold mb-4 bg-gradient-earth bg-clip-text text-transparent">
+          {showWeatherForecast ? '🎛️ Interactive Weather' : '🌤️ Weather Parameters'}
+        </h3>
+        
+        {showWeatherForecast && (
+          <div className="mb-4 p-3 bg-primary/5 rounded-lg border border-primary/20">
+            <p className="text-xs text-muted-foreground">
+              <strong>Real-time Simulation:</strong> Adjust parameters below to see live changes in the forecast!
+            </p>
           </div>
-        </Card>
+        )}
+        
+        <div className="space-y-6">
+          {/* Temperature */}
+          <div>
+            <Label className="text-sm font-medium mb-2 block">
+              Temperature: {weatherParams.temperature}°C
+            </Label>
+            <Slider
+              value={[weatherParams.temperature]}
+              onValueChange={(value) => updateWeatherParam('temperature', value[0])}
+              max={50}
+              min={-30}
+              step={1}
+              className="w-full"
+            />
+            {showWeatherForecast && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Base: 20°C | Current: {weatherParams.temperature > 20 ? '+' : ''}{(weatherParams.temperature - 20).toFixed(1)}°C
+              </p>
+            )}
+          </div>
+
+          {/* Humidity */}
+          <div>
+            <Label className="text-sm font-medium mb-2 block">
+              Humidity: {weatherParams.humidity}%
+            </Label>
+            <Slider
+              value={[weatherParams.humidity]}
+              onValueChange={(value) => updateWeatherParam('humidity', value[0])}
+              max={100}
+              min={0}
+              step={1}
+              className="w-full"
+            />
+            {showWeatherForecast && weatherParams.humidity > 80 && (
+              <p className="text-xs text-orange-400 mt-1">⚠️ High humidity may increase rain probability</p>
+            )}
+          </div>
+
+          {/* Pressure */}
+          <div>
+            <Label className="text-sm font-medium mb-2 block">
+              Pressure: {weatherParams.pressure} hPa
+            </Label>
+            <Slider
+              value={[weatherParams.pressure]}
+              onValueChange={(value) => updateWeatherParam('pressure', value[0])}
+              max={1050}
+              min={950}
+              step={1}
+              className="w-full"
+            />
+            {showWeatherForecast && weatherParams.pressure < 1000 && (
+              <p className="text-xs text-orange-400 mt-1">⚠️ Low pressure may indicate stormy weather</p>
+            )}
+          </div>
+
+          {/* Wind Speed */}
+          <div>
+            <Label className="text-sm font-medium mb-2 block">
+              Wind Speed: {weatherParams.windSpeed} km/h
+            </Label>
+            <Slider
+              value={[weatherParams.windSpeed]}
+              onValueChange={(value) => updateWeatherParam('windSpeed', value[0])}
+              max={100}
+              min={0}
+              step={1}
+              className="w-full"
+            />
+            {showWeatherForecast && weatherParams.windSpeed > 30 && (
+              <p className="text-xs text-orange-400 mt-1">💨 High winds may affect outdoor activities</p>
+            )}
+          </div>
+          
+          {showWeatherForecast && (
+            <div className="pt-3 border-t border-border/50">
+              <Button
+                onClick={() => {
+                  setWeatherParams({
+                    temperature: 20,
+                    humidity: 60,
+                    pressure: 1013,
+                    windSpeed: 15,
+                  });
+                  toast.success('Reset to default values');
+                }}
+                variant="outline"
+                size="sm"
+                className="w-full"
+              >
+                🔄 Reset to Defaults
+              </Button>
+            </div>
+          )}
+        </div>
+      </Card>
 
       {/* Instructions */}
       <Card className="absolute bottom-6 left-1/2 transform -translate-x-1/2 p-4 backdrop-blur-glass bg-card/70 border-glass-border shadow-glass z-10">
@@ -828,6 +940,7 @@ const ThreeEarth = () => {
           city={forecastCity}
           weatherData={weatherData}
           isLoading={loadingWeather}
+          weatherParams={weatherParams}
           onClose={() => {
             setShowWeatherForecast(false);
             setForecastCity(null);
