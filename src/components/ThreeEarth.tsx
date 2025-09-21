@@ -5,20 +5,13 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { toast } from 'sonner';
+import { worldCities, getCityCount, type City } from '@/data/worldCities';
 
 interface WeatherParams {
   temperature: number;
   humidity: number;
   pressure: number;
   windSpeed: number;
-}
-
-interface City {
-  name: string;
-  country: string;
-  lat: number;
-  lng: number;
-  population: number;
 }
 
 const ThreeEarth = () => {
@@ -32,6 +25,8 @@ const ThreeEarth = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [showNightLights, setShowNightLights] = useState(false);
   const [autoRotate, setAutoRotate] = useState(true);
+  const [showCapitalsOnly, setShowCapitalsOnly] = useState(false);
+  const [selectedRegion, setSelectedRegion] = useState<string>('All');
   const [weatherParams, setWeatherParams] = useState<WeatherParams>({
     temperature: 20,
     humidity: 60,
@@ -39,62 +34,23 @@ const ThreeEarth = () => {
     windSpeed: 15,
   });
 
-  // Expanded cities dataset with more global coverage
-  const worldCities: City[] = [
-    // Major capitals and cities
-    { name: 'Tokyo', country: 'Japan', lat: 35.6762, lng: 139.6503, population: 14000000 },
-    { name: 'Delhi', country: 'India', lat: 28.7041, lng: 77.1025, population: 32900000 },
-    { name: 'Shanghai', country: 'China', lat: 31.2304, lng: 121.4737, population: 28500000 },
-    { name: 'São Paulo', country: 'Brazil', lat: -23.5505, lng: -46.6333, population: 22400000 },
-    { name: 'Mexico City', country: 'Mexico', lat: 19.4326, lng: -99.1332, population: 21800000 },
-    { name: 'Cairo', country: 'Egypt', lat: 30.0444, lng: 31.2357, population: 20900000 },
-    { name: 'Mumbai', country: 'India', lat: 19.0760, lng: 72.8777, population: 20400000 },
-    { name: 'Beijing', country: 'China', lat: 39.9042, lng: 116.4074, population: 21500000 },
-    { name: 'Dhaka', country: 'Bangladesh', lat: 23.8103, lng: 90.4125, population: 22000000 },
-    { name: 'Osaka', country: 'Japan', lat: 34.6937, lng: 135.5023, population: 18900000 },
-    { name: 'New York', country: 'USA', lat: 40.7128, lng: -74.0060, population: 18800000 },
-    { name: 'Karachi', country: 'Pakistan', lat: 24.8607, lng: 67.0011, population: 16000000 },
-    { name: 'Buenos Aires', country: 'Argentina', lat: -34.6118, lng: -58.3960, population: 15000000 },
-    { name: 'Chongqing', country: 'China', lat: 29.4316, lng: 106.9123, population: 15000000 },
-    { name: 'Istanbul', country: 'Turkey', lat: 41.0082, lng: 28.9784, population: 15500000 },
-    { name: 'Kolkata', country: 'India', lat: 22.5726, lng: 88.3639, population: 14800000 },
-    { name: 'Manila', country: 'Philippines', lat: 14.5995, lng: 120.9842, population: 13500000 },
-    { name: 'Lagos', country: 'Nigeria', lat: 6.5244, lng: 3.3792, population: 15400000 },
-    { name: 'Rio de Janeiro', country: 'Brazil', lat: -22.9068, lng: -43.1729, population: 13500000 },
-    { name: 'Tianjin', country: 'China', lat: 39.3434, lng: 117.3616, population: 13900000 },
-    { name: 'Kinshasa', country: 'Congo', lat: -4.4419, lng: 15.2663, population: 14300000 },
-    { name: 'Guangzhou', country: 'China', lat: 23.1291, lng: 113.2644, population: 13100000 },
-    { name: 'Los Angeles', country: 'USA', lat: 34.0522, lng: -118.2437, population: 13200000 },
-    { name: 'Moscow', country: 'Russia', lat: 55.7558, lng: 37.6176, population: 12500000 },
-    { name: 'Shenzhen', country: 'China', lat: 22.5431, lng: 114.0579, population: 12400000 },
-    { name: 'Lahore', country: 'Pakistan', lat: 31.5804, lng: 74.3587, population: 12600000 },
-    { name: 'Bangalore', country: 'India', lat: 12.9716, lng: 77.5946, population: 12300000 },
-    { name: 'Paris', country: 'France', lat: 48.8566, lng: 2.3522, population: 11000000 },
-    { name: 'Bogotá', country: 'Colombia', lat: 4.7110, lng: -74.0721, population: 11000000 },
-    { name: 'Jakarta', country: 'Indonesia', lat: -6.2088, lng: 106.8456, population: 10800000 },
-    { name: 'Chennai', country: 'India', lat: 13.0827, lng: 80.2707, population: 10700000 },
-    { name: 'Lima', country: 'Peru', lat: -12.0464, lng: -77.0428, population: 10700000 },
-    { name: 'Bangkok', country: 'Thailand', lat: 13.7563, lng: 100.5018, population: 10500000 },
-    { name: 'Seoul', country: 'South Korea', lat: 37.5665, lng: 126.9780, population: 9700000 },
-    { name: 'Nagoya', country: 'Japan', lat: 35.1815, lng: 136.9066, population: 9500000 },
-    { name: 'Hyderabad', country: 'India', lat: 17.3850, lng: 78.4867, population: 9500000 },
-    { name: 'London', country: 'UK', lat: 51.5074, lng: -0.1278, population: 9600000 },
-    { name: 'Tehran', country: 'Iran', lat: 35.6892, lng: 51.3890, population: 9100000 },
-    { name: 'Chicago', country: 'USA', lat: 41.8781, lng: -87.6298, population: 9500000 },
-    { name: 'Chengdu', country: 'China', lat: 30.5728, lng: 104.0668, population: 9000000 },
-    { name: 'Nanjing', country: 'China', lat: 32.0603, lng: 118.7969, population: 8800000 },
-    { name: 'Wuhan', country: 'China', lat: 30.5928, lng: 114.3055, population: 8800000 },
-    { name: 'Ho Chi Minh City', country: 'Vietnam', lat: 10.8231, lng: 106.6297, population: 8600000 },
-    { name: 'Luanda', country: 'Angola', lat: -8.8390, lng: 13.2894, population: 8300000 },
-    { name: 'Ahmedabad', country: 'India', lat: 23.0225, lng: 72.5714, population: 8200000 },
-    { name: 'Kuala Lumpur', country: 'Malaysia', lat: 3.1390, lng: 101.6869, population: 8200000 },
-    { name: 'Xi\'an', country: 'China', lat: 34.2667, lng: 108.9000, population: 8000000 },
-    { name: 'Hong Kong', country: 'China', lat: 22.3193, lng: 114.1694, population: 7500000 },
-    { name: 'Dongguan', country: 'China', lat: 23.0489, lng: 113.7447, population: 7400000 },
-    { name: 'Hangzhou', country: 'China', lat: 30.2741, lng: 120.1551, population: 7200000 },
-    { name: 'Foshan', country: 'China', lat: 23.0218, lng: 113.1219, population: 7200000 },
-    { name: 'Shenyang', country: 'China', lat: 41.8057, lng: 123.4315, population: 7100000 }
-  ];
+  // Get filtered cities based on user preferences
+  const getFilteredCities = (): City[] => {
+    let cities = worldCities;
+    
+    if (showCapitalsOnly) {
+      cities = cities.filter(city => city.isCapital);
+    }
+    
+    if (selectedRegion !== 'All') {
+      cities = cities.filter(city => city.region === selectedRegion);
+    }
+    
+    return cities;
+  };
+
+  const regions = ['All', 'North America', 'South America', 'Europe', 'Asia', 'Africa', 'Oceania'];
+  const cityStats = getCityCount();
 
   // Convert lat/lng to 3D coordinates on sphere
   const latLngToVector3 = (lat: number, lng: number, radius: number = 5.1) => {
@@ -215,17 +171,26 @@ const ThreeEarth = () => {
       earthRef.current = earth;
 
       // Add city markers
-      worldCities.forEach(city => {
+      const filteredCities = getFilteredCities();
+      
+      filteredCities.forEach(city => {
         const markerGeometry = new THREE.SphereGeometry(0.05, 8, 8);
+        
+        // Different colors for capitals vs major cities
+        const markerColor = city.isCapital ? 0xffd700 : 0x00ffff; // Gold for capitals, cyan for major cities
         const markerMaterial = new THREE.MeshBasicMaterial({ 
-          color: 0x00ffff,
+          color: markerColor,
           transparent: true,
-          opacity: 0.8
+          opacity: 0.9
         });
         
         const marker = new THREE.Mesh(markerGeometry, markerMaterial);
         const position = latLngToVector3(city.lat, city.lng);
         marker.position.copy(position);
+        
+        // Scale marker based on population
+        const populationScale = Math.max(0.5, Math.min(2.0, Math.log10(city.population) / 4));
+        marker.scale.setScalar(populationScale);
         
         // Add pulsing animation
         const originalScale = marker.scale.clone();
@@ -366,7 +331,7 @@ const ThreeEarth = () => {
       }
       renderer.dispose();
     };
-  }, [autoRotate, showNightLights]);
+  }, [autoRotate, showNightLights, showCapitalsOnly, selectedRegion]);
 
   const updateWeatherParam = (key: keyof WeatherParams, value: number) => {
     setWeatherParams(prev => ({ ...prev, [key]: value }));
@@ -514,7 +479,9 @@ const ThreeEarth = () => {
           <ul className="text-muted-foreground space-y-1 text-xs">
             <li>• Click and drag to rotate Earth</li>
             <li>• Scroll to zoom in/out</li>
-            <li>• Cyan dots = major cities</li>
+            <li>• <span className="text-yellow-400">Gold dots</span> = capitals</li>
+            <li>• <span className="text-cyan-400">Cyan dots</span> = major cities</li>
+            <li>• Larger dots = bigger population</li>
             <li>• Weather parameters affect all cities</li>
           </ul>
         </div>
