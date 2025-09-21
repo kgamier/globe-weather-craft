@@ -121,9 +121,12 @@ const ThreeEarth = () => {
   };
 
   const handleCityClick = (city: City) => {
+    console.log('City clicked:', city.name);
+    console.log('Setting showWeatherForecast to true');
     setForecastCity(city);
     setShowWeatherForecast(true);
     fetchWeatherData(city);
+    console.log('showWeatherForecast state:', showWeatherForecast);
   };
 
   const handleEventPlannerOpen = (city: City) => {
@@ -805,6 +808,10 @@ const ThreeEarth = () => {
         <h3 className="text-lg font-semibold mb-4 bg-gradient-earth bg-clip-text text-transparent">
           {showWeatherForecast ? '🎛️ Interactive Weather' : '🌤️ Weather Parameters'}
         </h3>
+        
+        <div className="mb-2 text-xs">
+          Debug: showWeatherForecast = {showWeatherForecast.toString()}
+        </div>
         
         {showWeatherForecast && (
           <div className="mb-4 p-3 bg-primary/5 rounded-lg border border-primary/20">
