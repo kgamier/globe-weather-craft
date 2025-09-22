@@ -52,6 +52,12 @@ const ThreeEarth = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [showNightLights, setShowNightLights] = useState(false);
   const [autoRotate, setAutoRotate] = useState(true);
+  const autoRotateRef = useRef(true); // Ref to track auto-rotate state for animation loop
+  
+  // Initialize autoRotateRef with the initial state
+  useEffect(() => {
+    autoRotateRef.current = autoRotate;
+  }, []);
   const [showCapitalsOnly, setShowCapitalsOnly] = useState(false);
   const [selectedRegion, setSelectedRegion] = useState<string>('All');
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -517,7 +523,7 @@ const ThreeEarth = () => {
       const shouldUpdate = shouldUpdateMarker(Date.now());
 
       // Only apply auto-rotation if enabled and not manually controlling
-      if (earthRef.current && autoRotate && !userInteractionRef.current) {
+      if (earthRef.current && autoRotateRef.current && !userInteractionRef.current) {
         earthRef.current.rotation.y += performanceMode ? 0.001 : 0.002;
       }
 
@@ -581,6 +587,11 @@ const ThreeEarth = () => {
       renderer.dispose();
     };
   }, []);
+
+  // Sync autoRotate state with ref whenever it changes
+  useEffect(() => {
+    autoRotateRef.current = autoRotate;
+  }, [autoRotate]);
 
   const updateWeatherParam = (key: keyof WeatherParams, value: number) => {
     setWeatherParams(prev => ({ ...prev, [key]: value }));
@@ -1039,6 +1050,7 @@ const ThreeEarth = () => {
                 onClick={() => {
                   const newAutoRotate = !autoRotate;
                   setAutoRotate(newAutoRotate);
+                  autoRotateRef.current = newAutoRotate; // Update ref immediately
                   toast.success(`Auto-rotate ${newAutoRotate ? 'enabled' : 'disabled'}`);
                 }}
               >
