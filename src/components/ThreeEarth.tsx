@@ -274,8 +274,9 @@ const ThreeEarth = () => {
       const borderMaterial = new THREE.LineBasicMaterial({ 
         color: 0x00ff88, // Bright green color
         transparent: true, 
-        opacity: 0.8, // Higher opacity
-        linewidth: 2 // Thicker lines
+        opacity: 0.9,
+        depthTest: false,
+        depthWrite: false
       });
       
       let totalLines = 0;
@@ -326,7 +327,9 @@ const ThreeEarth = () => {
       
       if (points.length > 1) {
         const geometry = new THREE.BufferGeometry().setFromPoints(points);
-        const line = new THREE.Line(geometry, material);
+        const line = new THREE.LineLoop(geometry, material as THREE.LineBasicMaterial);
+        line.renderOrder = 999;
+        line.frustumCulled = false;
         group.add(line);
         linesCreated++;
       }
