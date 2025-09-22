@@ -50,6 +50,7 @@ const ThreeEarth = () => {
   const raycasterRef = useRef<THREE.Raycaster>();
   const mouseRef = useRef<THREE.Vector2>();
   const lastUpdateTime = useRef<number>(0);
+  const bordersRef = useRef<THREE.Group>();
   
   const [isLoading, setIsLoading] = useState(true);
   const [showNightLights, setShowNightLights] = useState(false);
@@ -67,6 +68,7 @@ const ThreeEarth = () => {
   const [selectedCity, setSelectedCity] = useState<City | null>(null);
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [performanceMode, setPerformanceMode] = useState<boolean>(false);
+  const [showCountryBorders, setShowCountryBorders] = useState(false);
   const [showWeatherForecast, setShowWeatherForecast] = useState(false);
   const [showEventPlanner, setShowEventPlanner] = useState(false);
   const [forecastCity, setForecastCity] = useState<City | null>(null);
@@ -252,6 +254,69 @@ const ThreeEarth = () => {
     );
   };
 
+  // Create country borders from GeoJSON data
+  const createCountryBorders = async (scene: THREE.Scene): Promise<THREE.Group> => {
+    try {
+      const response = await fetch('/data/countries.geojson');
+      const geojsonData = await response.json();
+      
+      const bordersGroup = new THREE.Group();
+      bordersRef.current = bordersGroup;
+      
+      // Create material for borders
+      const borderMaterial = new THREE.LineBasicMaterial({ 
+        color: 0xffffff, 
+        transparent: true, 
+        opacity: 0.3,
+        linewidth: 1
+      });
+      
+      geojsonData.features.forEach((feature: any) => {
+        if (feature.geometry && feature.geometry.type === 'Polygon') {
+          // Handle single polygon
+          createBorderLines(feature.geometry.coordinates, borderMaterial, bordersGroup);
+        } else if (feature.geometry && feature.geometry.type === 'MultiPolygon') {
+          // Handle multiple polygons (for countries with islands, etc.)
+          feature.geometry.coordinates.forEach((polygon: any) => {
+            createBorderLines(polygon, borderMaterial, bordersGroup);
+          });
+        }
+      });
+      
+      bordersGroup.visible = showCountryBorders;
+      scene.add(bordersGroup);
+      
+      return bordersGroup;
+    } catch (error) {
+      console.error('Failed to load country borders:', error);
+      toast.error('Failed to load country borders');
+      return new THREE.Group();
+    }
+  };
+  
+  const createBorderLines = (coordinates: any[], material: THREE.Material, group: THREE.Group) => {
+    coordinates.forEach((ring: any[]) => {
+      const points: THREE.Vector3[] = [];
+      
+      // Sample every nth point for performance (reduce detail)
+      const step = Math.max(1, Math.floor(ring.length / 50)); // Limit to ~50 points per ring
+      
+      for (let i = 0; i < ring.length; i += step) {
+        const [lng, lat] = ring[i];
+        if (typeof lat === 'number' && typeof lng === 'number' && 
+            lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+          points.push(latLngToVector3(lat, lng, 5.15)); // Slightly above Earth surface
+        }
+      }
+      
+      if (points.length > 1) {
+        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+        const line = new THREE.Line(geometry, material);
+        group.add(line);
+      }
+    });
+  };
+
   useEffect(() => {
     if (!mountRef.current) return;
 
@@ -382,6 +447,11 @@ const ThreeEarth = () => {
       });
       
       earth.add(markersGroup);
+
+      // Add country borders if enabled
+      if (showCountryBorders) {
+        createCountryBorders(sceneRef.current!);
+      }
 
       setIsLoading(false);
       toast.success("Earth loaded successfully!");
@@ -620,6 +690,16 @@ const ThreeEarth = () => {
       renderer.dispose();
     };
   }, []);
+
+  // Handle borders toggle
+  useEffect(() => {
+    if (bordersRef.current) {
+      bordersRef.current.visible = showCountryBorders;
+    } else if (showCountryBorders && sceneRef.current && !isLoading) {
+      // Create borders if they don't exist yet
+      createCountryBorders(sceneRef.current);
+    }
+  }, [showCountryBorders, isLoading]);
 
   // Sync autoRotate state with ref whenever it changes
   useEffect(() => {
@@ -1099,6 +1179,20 @@ const ThreeEarth = () => {
                 onClick={() => setShowNightLights(!showNightLights)}
               >
                 {showNightLights ? 'ON' : 'OFF'}
+              </Button>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <Label className="text-sm">Country Borders</Label>
+              <Button
+                variant={showCountryBorders ? "default" : "outline"}
+                size="sm"
+                onClick={() => {
+                  setShowCountryBorders(!showCountryBorders);
+                  toast.success(`Country borders ${!showCountryBorders ? 'enabled' : 'disabled'}`);
+                }}
+              >
+                {showCountryBorders ? 'ON' : 'OFF'}
               </Button>
             </div>
 
