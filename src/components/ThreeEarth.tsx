@@ -275,7 +275,7 @@ const ThreeEarth = () => {
         color: 0xffffff, // High-contrast white
         transparent: true, 
         opacity: 1.0,
-        depthTest: false,
+        depthTest: true,  // Enable depth testing to hide back-facing borders
         depthWrite: false
       });
       
