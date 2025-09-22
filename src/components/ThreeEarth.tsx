@@ -9,12 +9,31 @@ import { toast } from 'sonner';
 import { worldCities, getCityCount, type City } from '@/data/worldCities';
 import WeatherForecast from './WeatherForecast';
 import EventPlanner from './EventPlanner';
+import HistoricalWeatherGrid from './HistoricalWeatherGrid';
+import HistoricalWeatherControls from './HistoricalWeatherControls';
 
 interface WeatherParams {
   temperature: number;
   humidity: number;
   pressure: number;
   windSpeed: number;
+}
+
+interface GridCell {
+  lat: number;
+  lng: number;
+  id: string;
+  data?: HistoricalWeatherData;
+  loading?: boolean;
+  lastFetched?: number;
+}
+
+interface HistoricalWeatherData {
+  temperature: number[];
+  precipitation: number[];
+  dates: string[];
+  avgTemperature: number;
+  avgPrecipitation: number;
 }
 
 const ThreeEarth = () => {
@@ -51,6 +70,19 @@ const ThreeEarth = () => {
     pressure: 1013,
     windSpeed: 15,
   });
+  
+  // Historical weather grid state
+  const [showHistoricalGrid, setShowHistoricalGrid] = useState(false);
+  const [historicalDateRange, setHistoricalDateRange] = useState(() => {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - 30); // Default to last 30 days
+    return {
+      start: start.toISOString().split('T')[0],
+      end: end.toISOString().split('T')[0]
+    };
+  });
+  const [selectedGridCell, setSelectedGridCell] = useState<GridCell | null>(null);
 
   // Get filtered cities based on user preferences
   const getFilteredCities = (): City[] => {
@@ -121,12 +153,9 @@ const ThreeEarth = () => {
   };
 
   const handleCityClick = (city: City) => {
-    console.log('City clicked:', city.name);
-    console.log('Setting showWeatherForecast to true');
     setForecastCity(city);
     setShowWeatherForecast(true);
     fetchWeatherData(city);
-    console.log('showWeatherForecast state:', showWeatherForecast);
   };
 
   const handleEventPlannerOpen = (city: City) => {
@@ -543,6 +572,18 @@ const ThreeEarth = () => {
     setWeatherParams(prev => ({ ...prev, [key]: value }));
   };
 
+  // Historical weather grid handlers
+  const handleGridCellClick = (cell: GridCell) => {
+    setSelectedGridCell(cell);
+    toast.success(`Selected region: ${cell.lat.toFixed(1)}°, ${cell.lng.toFixed(1)}°`);
+  };
+
+  const handleHistoricalDateRangeChange = (range: { start: string; end: string }) => {
+    setHistoricalDateRange(range);
+    setSelectedGridCell(null); // Clear selection when date range changes
+    toast.success(`Updated date range: ${range.start} to ${range.end}`);
+  };
+
   return (
     <div className="relative w-full h-screen bg-gradient-space overflow-hidden">
       {/* Loading screen */}
@@ -809,10 +850,6 @@ const ThreeEarth = () => {
           {showWeatherForecast ? '🎛️ Interactive Weather' : '🌤️ Weather Parameters'}
         </h3>
         
-        <div className="mb-2 text-xs">
-          Debug: showWeatherForecast = {showWeatherForecast.toString()}
-        </div>
-        
         {showWeatherForecast && (
           <div className="mb-4 p-3 bg-primary/5 rounded-lg border border-primary/20">
             <p className="text-xs text-muted-foreground">
@@ -919,6 +956,16 @@ const ThreeEarth = () => {
         </div>
       </Card>
 
+      {/* Historical Weather Grid Controls */}
+      <HistoricalWeatherControls
+        visible={showHistoricalGrid}
+        onToggle={() => setShowHistoricalGrid(!showHistoricalGrid)}
+        dateRange={historicalDateRange}
+        onDateRangeChange={handleHistoricalDateRangeChange}
+        selectedCell={selectedGridCell}
+        onClearSelection={() => setSelectedGridCell(null)}
+      />
+
       {/* Instructions */}
       <Card className="absolute bottom-6 left-1/2 transform -translate-x-1/2 p-4 backdrop-blur-glass bg-card/70 border-glass-border shadow-glass z-10">
         <div className="text-sm space-y-2">
@@ -934,9 +981,28 @@ const ThreeEarth = () => {
             <li>• <span className="text-red-400">Red dot</span> = selected city</li>
             <li>• Larger dots = bigger population</li>
             <li>• <span className="text-purple-400">📡 NASA Earth data</span> for event planning</li>
+            {showHistoricalGrid && (
+              <>
+                <li>• <span className="text-blue-400">Blue grid</span> = cold historical temps</li>
+                <li>• <span className="text-red-400">Red grid</span> = hot historical temps</li>
+                <li>• <span className="font-medium">Click colored regions</span> for historical data</li>
+              </>
+            )}
           </ul>
         </div>
       </Card>
+
+      {/* Historical Weather Grid */}
+      {sceneRef.current && cameraRef.current && (
+        <HistoricalWeatherGrid
+          scene={sceneRef.current}
+          camera={cameraRef.current}
+          earth={earthRef.current || null}
+          visible={showHistoricalGrid}
+          selectedDateRange={historicalDateRange}
+          onCellClick={handleGridCellClick}
+        />
+      )}
 
       {/* Atmospheric overlay */}
       <div className="absolute inset-0 bg-gradient-atmosphere pointer-events-none" />
