@@ -12,6 +12,7 @@ import EventPlanner from './EventPlanner';
 import HistoricalWeatherGrid from './HistoricalWeatherGrid';
 import HistoricalWeatherControls from './HistoricalWeatherControls';
 import { performanceMonitor } from '@/utils/PerformanceMonitor';
+import { getEnhancedCities } from '@/utils/populationEnhancer';
 
 interface WeatherParams {
   temperature: number;
@@ -94,9 +95,9 @@ const ThreeEarth = () => {
   // Surface click weather state
   const [clickedLocation, setClickedLocation] = useState<{ lat: number; lng: number; name: string } | null>(null);
 
-  // Get filtered cities based on user preferences
+  // Get filtered cities based on user preferences (with enhanced population data)
   const getFilteredCities = (): City[] => {
-    let cities = worldCities;
+    let cities = getEnhancedCities(); // Use enhanced data with better population numbers
     
     if (showCapitalsOnly) {
       cities = cities.filter(city => city.isCapital);
@@ -119,7 +120,8 @@ const ThreeEarth = () => {
       return;
     }
     
-    const results = worldCities.filter(city =>
+    // Use enhanced cities for search
+    const results = getEnhancedCities().filter(city =>
       city.name.toLowerCase().includes(term.toLowerCase()) ||
       city.country.toLowerCase().includes(term.toLowerCase())
     ).slice(0, 8); // Limit to 8 results for better UX
