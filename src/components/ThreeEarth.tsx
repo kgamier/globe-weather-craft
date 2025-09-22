@@ -125,7 +125,7 @@ const ThreeEarth = () => {
     setSelectedCity(city);
     setSearchTerm(city.name);
     setShowSearchResults(false);
-    setAutoRotate(false);
+    // Don't disable auto-rotate when selecting cities, let user control it
     
     toast.success(`Focused on ${city.name}, ${city.country}`);
   };
@@ -407,11 +407,13 @@ const ThreeEarth = () => {
     let isRotating = false;
     let lastMousePosition = { x: 0, y: 0 };
     let rotationVelocity = { x: 0, y: 0 };
+    let userInteractionRef = { current: false }; // Ref to track user interaction state
 
     const handleMouseDown = (event: MouseEvent) => {
       if (event.button !== 0) return; // Only left click
       isMouseDown = true;
       isRotating = false;
+      userInteractionRef.current = true;
       lastMousePosition = { x: event.clientX, y: event.clientY };
       
       // Change cursor to indicate dragging mode
@@ -429,7 +431,7 @@ const ThreeEarth = () => {
       // If mouse moved enough, consider it rotation
       if (Math.abs(deltaMove.x) > 2 || Math.abs(deltaMove.y) > 2) {
         isRotating = true;
-        setAutoRotate(false);
+        userInteractionRef.current = true;
         
         // Apply rotation based on mouse movement
         if (earthRef.current) {
@@ -483,18 +485,10 @@ const ThreeEarth = () => {
       }
       
       isMouseDown = false;
+      userInteractionRef.current = false;
       
       // Reset cursor
       renderer.domElement.style.cursor = 'grab';
-      
-      // If we were rotating, delay auto-rotate resumption
-      if (isRotating) {
-        setTimeout(() => {
-          if (!isMouseDown) { // Only resume if not currently dragging
-            setAutoRotate(true);
-          }
-        }, 3000);
-      }
       
       isRotating = false;
     };
@@ -522,8 +516,8 @@ const ThreeEarth = () => {
       const time = Date.now() * 0.001;
       const shouldUpdate = shouldUpdateMarker(Date.now());
 
-      // Only apply auto-rotation if not manually controlling
-      if (earthRef.current && autoRotate && !isMouseDown) {
+      // Only apply auto-rotation if enabled and not manually controlling
+      if (earthRef.current && autoRotate && !userInteractionRef.current) {
         earthRef.current.rotation.y += performanceMode ? 0.001 : 0.002;
       }
 
@@ -984,7 +978,7 @@ const ThreeEarth = () => {
                 onClick={() => {
                   setSelectedCity(null);
                   setSearchTerm('');
-                  setAutoRotate(true);
+                  // Don't force auto-rotate on, respect user's toggle setting
                 }}
               >
                 Clear
@@ -1042,7 +1036,11 @@ const ThreeEarth = () => {
               <Button
                 variant={autoRotate ? "default" : "outline"}
                 size="sm"
-                onClick={() => setAutoRotate(!autoRotate)}
+                onClick={() => {
+                  const newAutoRotate = !autoRotate;
+                  setAutoRotate(newAutoRotate);
+                  toast.success(`Auto-rotate ${newAutoRotate ? 'enabled' : 'disabled'}`);
+                }}
               >
                 {autoRotate ? 'ON' : 'OFF'}
               </Button>
