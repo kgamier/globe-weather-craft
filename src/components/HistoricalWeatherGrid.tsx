@@ -40,12 +40,26 @@ export const HistoricalWeatherGrid: React.FC<HistoricalWeatherGridProps> = ({
   const [visibleCells, setVisibleCells] = useState<Set<string>>(new Set());
   const gridMeshesRef = useRef<Map<string, THREE.Mesh>>(new Map());
   const raycaster = useRef(new THREE.Raycaster());
+  const requestQueueRef = useRef<Set<string>>(new Set());
+  const lastUpdateRef = useRef<number>(0);
 
-  // Generate grid cell ID
-  const getCellId = (lat: number, lng: number): string => {
+  // Generate grid cell ID with validation
+  const getCellId = (lat: number, lng: number): string | null => {
+    // Validate coordinates
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      return null;
+    }
+    
     const gridLat = Math.floor(lat / 2) * 2;
     const gridLng = Math.floor(lng / 2) * 2;
     return `${gridLat},${gridLng}`;
+  };
+
+  // Get adaptive grid size based on camera distance
+  const getGridSize = (cameraDistance: number): number => {
+    if (cameraDistance > 8) return 8; // Very zoomed out - 8° grid
+    if (cameraDistance > 5) return 4; // Medium zoom - 4° grid  
+    return 2; // Close zoom - 2° grid
   };
 
   // Convert lat/lng to 3D position on sphere
@@ -80,35 +94,60 @@ export const HistoricalWeatherGrid: React.FC<HistoricalWeatherGridProps> = ({
     }));
   };
 
-  // Fetch historical weather data for a grid cell
-  const fetchCellData = async (cell: GridCell): Promise<void> => {
+  // Throttled batch fetcher with max concurrent requests
+  const fetchCellDataBatch = async (cells: GridCell[]): Promise<void> => {
+    const MAX_CONCURRENT = 3; // Limit concurrent requests
+    const DELAY_BETWEEN_BATCHES = 100; // ms delay between batches
+    
+    for (let i = 0; i < cells.length; i += MAX_CONCURRENT) {
+      const batch = cells.slice(i, i + MAX_CONCURRENT);
+      
+      await Promise.all(batch.map(cell => fetchSingleCell(cell)));
+      
+      // Delay between batches to avoid overwhelming the API
+      if (i + MAX_CONCURRENT < cells.length) {
+        await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_BATCHES));
+      }
+    }
+  };
+
+  // Fetch single cell with proper error handling
+  const fetchSingleCell = async (cell: GridCell): Promise<void> => {
+    // Skip if already loading or in queue
+    if (requestQueueRef.current.has(cell.id)) return;
+    
     const cachedData = getCachedData(cell.id);
     if (cachedData) {
       setGridCells(prev => new Map(prev.set(cell.id, { ...cell, data: cachedData })));
       return;
     }
 
+    requestQueueRef.current.add(cell.id);
     setGridCells(prev => new Map(prev.set(cell.id, { ...cell, loading: true })));
 
     try {
+      // Add center offset to grid cell for better representation
+      const centerLat = cell.lat + 1;
+      const centerLng = cell.lng + 1;
+      
       const response = await fetch(
         `https://archive-api.open-meteo.com/v1/archive?` +
-        `latitude=${cell.lat}&longitude=${cell.lng}&` +
+        `latitude=${centerLat}&longitude=${centerLng}&` +
         `start_date=${selectedDateRange.start}&end_date=${selectedDateRange.end}&` +
         `daily=temperature_2m_mean,precipitation_sum&` +
         `timezone=UTC`
       );
 
-      if (!response.ok) throw new Error('Failed to fetch weather data');
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
       const data = await response.json();
       
       const historicalData: HistoricalWeatherData = {
-        temperature: data.daily.temperature_2m_mean || [],
-        precipitation: data.daily.precipitation_sum || [],
-        dates: data.daily.time || [],
-        avgTemperature: data.daily.temperature_2m_mean?.reduce((a: number, b: number) => a + b, 0) / (data.daily.temperature_2m_mean?.length || 1) || 0,
-        avgPrecipitation: data.daily.precipitation_sum?.reduce((a: number, b: number) => a + b, 0) / (data.daily.precipitation_sum?.length || 1) || 0
+        temperature: data.daily?.temperature_2m_mean || [],
+        precipitation: data.daily?.precipitation_sum || [],
+        dates: data.daily?.time || [],
+        avgTemperature: data.daily?.temperature_2m_mean?.reduce((a: number, b: number) => a + b, 0) / (data.daily?.temperature_2m_mean?.length || 1) || 0,
+        avgPrecipitation: data.daily?.precipitation_sum?.reduce((a: number, b: number) => a + b, 0) / (data.daily?.precipitation_sum?.length || 1) || 0
       };
 
       setCachedData(cell.id, historicalData);
@@ -122,83 +161,129 @@ export const HistoricalWeatherGrid: React.FC<HistoricalWeatherGridProps> = ({
     } catch (error) {
       console.error('Failed to fetch weather data for cell:', cell.id, error);
       setGridCells(prev => new Map(prev.set(cell.id, { ...cell, loading: false })));
+    } finally {
+      requestQueueRef.current.delete(cell.id);
     }
   };
 
-  // Generate visible grid cells based on camera position
+  // Optimized visible cells calculation with frustum culling
   const updateVisibleCells = (): void => {
-    if (!camera || !earth) return;
+    if (!camera || !earth || !visible) return;
+
+    // Throttle updates to avoid excessive recalculation
+    const now = Date.now();
+    if (now - lastUpdateRef.current < 200) return; // Max 5 updates per second
+    lastUpdateRef.current = now;
 
     const cameraDistance = camera.position.distanceTo(new THREE.Vector3(0, 0, 0));
-    const visibilityRadius = Math.min(180, Math.max(20, 1000 / cameraDistance));
     
+    // Don't load data when very far away
+    if (cameraDistance > 12) return;
+    
+    const gridSize = getGridSize(cameraDistance);
     const newVisibleCells = new Set<string>();
-    const newGridCells = new Map(gridCells);
+    const cellsToFetch: GridCell[] = [];
 
-    // Generate grid cells within visibility radius
-    for (let lat = -90; lat <= 90; lat += 2) {
-      for (let lng = -180; lng <= 180; lng += 2) {
+    // Calculate camera's forward direction for better frustum culling
+    const cameraForward = new THREE.Vector3();
+    camera.getWorldDirection(cameraForward);
+    
+    // More efficient iteration - sample fewer points when far away
+    const step = cameraDistance > 6 ? gridSize * 2 : gridSize;
+    const latStart = Math.max(-88, -90); // Avoid poles
+    const latEnd = Math.min(88, 90);
+
+    for (let lat = latStart; lat <= latEnd; lat += step) {
+      for (let lng = -180; lng <= 180; lng += step) {
         const cellId = getCellId(lat, lng);
-        const cellCenter = latLngToVector3(lat + 1, lng + 1);
-        
-        // Check if cell is within visibility radius
-        const screenPosition = cellCenter.clone().project(camera);
-        const isVisible = Math.abs(screenPosition.x) <= 1.5 && 
-                         Math.abs(screenPosition.y) <= 1.5 && 
-                         screenPosition.z <= 1;
+        if (!cellId) continue;
 
-        if (isVisible && cameraDistance < 10) {
+        // Quick distance check before expensive projection
+        const cellCenter = latLngToVector3(lat + step/2, lng + step/2);
+        const distanceToCamera = cellCenter.distanceTo(camera.position);
+        
+        if (distanceToCamera > 8) continue; // Skip very distant cells
+        
+        // Check if cell faces the camera (back-face culling)
+        const toCameraDirection = camera.position.clone().sub(cellCenter).normalize();
+        const cellNormal = cellCenter.clone().normalize();
+        if (toCameraDirection.dot(cellNormal) < 0.3) continue; // Skip back-facing cells
+        
+        // Project to screen space
+        const screenPosition = cellCenter.clone().project(camera);
+        const isVisible = Math.abs(screenPosition.x) <= 1.2 && 
+                         Math.abs(screenPosition.y) <= 1.2 && 
+                         screenPosition.z <= 1 && 
+                         screenPosition.z >= -1;
+
+        if (isVisible) {
           newVisibleCells.add(cellId);
           
-          if (!newGridCells.has(cellId)) {
+          if (!gridCells.has(cellId)) {
             const cell: GridCell = {
-              lat,
-              lng,
+              lat: Math.floor(lat / gridSize) * gridSize,
+              lng: Math.floor(lng / gridSize) * gridSize,
               id: cellId
             };
-            newGridCells.set(cellId, cell);
-            
-            // Fetch data for new cells
-            fetchCellData(cell);
+            cellsToFetch.push(cell);
           }
         }
       }
     }
 
     setVisibleCells(newVisibleCells);
-    setGridCells(newGridCells);
+    
+    // Update grid cells state with new cells
+    if (cellsToFetch.length > 0) {
+      setGridCells(prev => {
+        const newMap = new Map(prev);
+        cellsToFetch.forEach(cell => newMap.set(cell.id, cell));
+        return newMap;
+      });
+      
+      // Batch fetch new cells
+      if (cellsToFetch.length <= 10) { // Only fetch if reasonable number
+        fetchCellDataBatch(cellsToFetch);
+      }
+    }
   };
 
-  // Create or update grid mesh for a cell
+  // Create or update grid mesh for a cell with performance optimizations
   const updateCellMesh = (cell: GridCell): void => {
-    if (!scene || !visible) return;
+    if (!scene || !visible || !visibleCells.has(cell.id) || !cell.data) return;
 
     const existingMesh = gridMeshesRef.current.get(cell.id);
     if (existingMesh) {
-      scene.remove(existingMesh);
-      gridMeshesRef.current.delete(cell.id);
+      // Update existing mesh color instead of recreating
+      const temp = cell.data.avgTemperature;
+      const normalizedTemp = Math.max(0, Math.min(1, (temp + 30) / 60));
+      const color = new THREE.Color().setHSL(0.7 - normalizedTemp * 0.7, 0.8, 0.5);
+      (existingMesh.material as THREE.MeshBasicMaterial).color = color;
+      return;
     }
-
-    if (!visibleCells.has(cell.id) || !cell.data) return;
 
     // Color based on temperature (blue = cold, red = hot)
     const temp = cell.data.avgTemperature;
     const normalizedTemp = Math.max(0, Math.min(1, (temp + 30) / 60)); // -30°C to +30°C
     const color = new THREE.Color().setHSL(0.7 - normalizedTemp * 0.7, 0.8, 0.5);
     
-    // Create grid cell geometry
-    const geometry = new THREE.PlaneGeometry(2, 2);
+    // Use adaptive geometry size based on camera distance
+    const cameraDistance = camera?.position.distanceTo(new THREE.Vector3(0, 0, 0)) || 5;
+    const gridSize = getGridSize(cameraDistance);
+    
+    const geometry = new THREE.PlaneGeometry(gridSize, gridSize);
     const material = new THREE.MeshBasicMaterial({ 
       color,
       transparent: true,
-      opacity: 0.6,
-      side: THREE.DoubleSide
+      opacity: cameraDistance > 8 ? 0.4 : 0.6, // More transparent when far
+      side: THREE.DoubleSide,
+      depthWrite: false // Improve transparency rendering
     });
 
     const mesh = new THREE.Mesh(geometry, material);
     
     // Position on sphere surface
-    const position = latLngToVector3(cell.lat + 1, cell.lng + 1, 1.005);
+    const position = latLngToVector3(cell.lat + gridSize/2, cell.lng + gridSize/2, 1.005);
     mesh.position.copy(position);
     mesh.lookAt(new THREE.Vector3(0, 0, 0));
     mesh.userData = { cellId: cell.id, type: 'weatherGrid' };
@@ -263,23 +348,25 @@ export const HistoricalWeatherGrid: React.FC<HistoricalWeatherGridProps> = ({
     }
   }, [visible, scene]);
 
-  // Update visible cells on camera movement (throttled)
+  // Optimized camera movement listener with better throttling
   useEffect(() => {
-    let timeoutId: NodeJS.Timeout;
+    let rafId: number;
+    let lastUpdate = 0;
     
     const throttledUpdate = () => {
-      clearTimeout(timeoutId);
-      timeoutId = setTimeout(updateVisibleCells, 100);
+      const now = Date.now();
+      if (now - lastUpdate < 300) return; // Throttle to max 3 updates per second
+      
+      lastUpdate = now;
+      rafId = requestAnimationFrame(updateVisibleCells);
     };
 
     if (visible && camera && earth) {
-      window.addEventListener('wheel', throttledUpdate);
-      window.addEventListener('mousemove', throttledUpdate);
+      window.addEventListener('wheel', throttledUpdate, { passive: true });
       
       return () => {
         window.removeEventListener('wheel', throttledUpdate);
-        window.removeEventListener('mousemove', throttledUpdate);
-        clearTimeout(timeoutId);
+        if (rafId) cancelAnimationFrame(rafId);
       };
     }
   }, [visible, camera, earth]);
