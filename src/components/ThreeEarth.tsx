@@ -275,8 +275,11 @@ const ThreeEarth = () => {
         color: 0xffffff, // High-contrast white
         transparent: true, 
         opacity: 1.0,
-        depthTest: true,  // Enable depth testing to hide back-facing borders
-        depthWrite: false
+        depthTest: true,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -2
       });
       
       let totalLines = 0;
@@ -321,7 +324,7 @@ const ThreeEarth = () => {
         if (typeof lat === 'number' && typeof lng === 'number' && 
             lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
           // Use radius slightly smaller than Earth surface since we're now a child of Earth mesh
-          points.push(latLngToVector3(lat, lng, 5.02)); // Just above Earth surface, but as child
+          points.push(latLngToVector3(lat, lng, 5.08)); // Slightly above Earth surface
         }
       }
       
