@@ -618,9 +618,8 @@ const ThreeEarth = () => {
           
           if (earthIntersects.length > 0) {
             const intersection = earthIntersects[0].point;
-            // Transform the intersection point into the Earth's local space to account for rotation
-            const localPoint = earthRef.current.worldToLocal(intersection.clone());
-            const { lat, lng } = vector3ToLatLng(localPoint);
+            // Use world coordinates directly since Earth is at origin
+            const { lat, lng } = vector3ToLatLng(intersection);
             
             // Validate coordinates are within Earth bounds
             if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
