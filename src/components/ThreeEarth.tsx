@@ -68,7 +68,7 @@ const ThreeEarth = () => {
   const [selectedCity, setSelectedCity] = useState<City | null>(null);
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [performanceMode, setPerformanceMode] = useState<boolean>(false);
-  const [showCountryBorders, setShowCountryBorders] = useState(false);
+  const [showCountryBorders, setShowCountryBorders] = useState(true);
   const [showWeatherForecast, setShowWeatherForecast] = useState(false);
   const [showEventPlanner, setShowEventPlanner] = useState(false);
   const [forecastCity, setForecastCity] = useState<City | null>(null);
@@ -272,9 +272,9 @@ const ThreeEarth = () => {
       
       // Create more visible material for borders
       const borderMaterial = new THREE.LineBasicMaterial({ 
-        color: 0x00ff88, // Bright green color
+        color: 0xffffff, // High-contrast white
         transparent: true, 
-        opacity: 0.9,
+        opacity: 1.0,
         depthTest: false,
         depthWrite: false
       });
