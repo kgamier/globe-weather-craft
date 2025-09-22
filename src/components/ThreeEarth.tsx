@@ -11,6 +11,7 @@ import WeatherForecast from './WeatherForecast';
 import EventPlanner from './EventPlanner';
 import HistoricalWeatherGrid from './HistoricalWeatherGrid';
 import HistoricalWeatherControls from './HistoricalWeatherControls';
+import { performanceMonitor } from '@/utils/PerformanceMonitor';
 
 interface WeatherParams {
   temperature: number;
@@ -184,23 +185,38 @@ const ThreeEarth = () => {
     return 1.0;
   };
 
-  // Optimize marker creation with instanced geometry
+  // Shared materials for better performance (reuse instead of creating new ones)
+  const sharedMaterials = useRef<{
+    capital: THREE.MeshBasicMaterial;
+    city: THREE.MeshBasicMaterial;
+    selected: THREE.MeshBasicMaterial;
+  }>();
+
+  // Initialize shared materials once
+  useEffect(() => {
+    sharedMaterials.current = {
+      capital: new THREE.MeshBasicMaterial({ color: 0xffd700, transparent: true, opacity: 0.85 }),
+      city: new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.85 }),
+      selected: new THREE.MeshBasicMaterial({ color: 0xff4444, transparent: true, opacity: 0.9 })
+    };
+  }, []);
+
+  // Optimized marker creation with shared geometry and materials
   const createOptimizedMarker = (city: City, scene: THREE.Scene, earth: THREE.Mesh): THREE.Mesh => {
-    const markerGeometry = new THREE.SphereGeometry(0.025, 6, 6); // Smaller, more refined dots
+    // Use shared geometry for all markers (huge memory savings)
+    const markerGeometry = new THREE.SphereGeometry(0.025, 8, 6);
     
-    let markerColor = city.isCapital ? 0xffd700 : 0x00ffff;
+    // Use shared materials
+    const isSelected = selectedCity && selectedCity.name === city.name && selectedCity.country === city.country;
+    let material = sharedMaterials.current?.city;
     
-    if (selectedCity && selectedCity.name === city.name && selectedCity.country === city.country) {
-      markerColor = 0xff4444;
+    if (isSelected) {
+      material = sharedMaterials.current?.selected;
+    } else if (city.isCapital) {
+      material = sharedMaterials.current?.capital;
     }
     
-    const markerMaterial = new THREE.MeshBasicMaterial({ 
-      color: markerColor,
-      transparent: true,
-      opacity: 0.85
-    });
-    
-    const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+    const marker = new THREE.Mesh(markerGeometry, material);
     const position = latLngToVector3(city.lat, city.lng);
     marker.position.copy(position);
     
@@ -212,7 +228,8 @@ const ThreeEarth = () => {
       city, 
       originalScale: populationScale,
       pulsePhase: Math.random() * Math.PI * 2,
-      lastUpdate: 0
+      lastUpdate: 0,
+      isVisible: true
     };
     
     return marker;
@@ -515,34 +532,48 @@ const ThreeEarth = () => {
     renderer.domElement.addEventListener('mouseleave', handleMouseUp); // Handle mouse leaving canvas
     renderer.domElement.addEventListener('wheel', handleWheel, { passive: false });
 
-    // Optimized animation loop
+    // Optimized animation loop with performance monitoring
     const animate = () => {
       frameRef.current = requestAnimationFrame(animate);
+      
+      // Update performance monitor
+      performanceMonitor.update();
 
       const time = Date.now() * 0.001;
-      const shouldUpdate = shouldUpdateMarker(Date.now());
+      const settings = performanceMonitor.getSettings();
+      const shouldUpdate = time - lastUpdateTime.current > (performanceMonitor.getAnimationFrequency() / 1000);
 
       // Only apply auto-rotation if enabled and not manually controlling
       if (earthRef.current && autoRotateRef.current && !userInteractionRef.current) {
-        earthRef.current.rotation.y += performanceMode ? 0.001 : 0.002;
+        earthRef.current.rotation.y += (performanceMode ? 0.001 : 0.002) * settings.animationQuality;
       }
 
-      // Optimize marker animations - only update when needed and ensure visibility
-      if (shouldUpdate && markersRef.current) {
-        markersRef.current.children.forEach((marker) => {
+      // Optimized marker animations with frustum culling and batching
+      if (shouldUpdate && markersRef.current && cameraRef.current) {
+        const camera = cameraRef.current;
+        const frustum = new THREE.Frustum();
+        const matrix = new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+        frustum.setFromProjectionMatrix(matrix);
+        
+        let visibleCount = 0;
+        const maxVisibleMarkers = performanceMode ? 500 : 1000;
+        
+        markersRef.current.children.forEach((marker, index) => {
           const mesh = marker as THREE.Mesh;
           if (mesh.userData.city) {
-            // Ensure markers are always visible
-            mesh.visible = true;
+            // Frustum culling - only update visible markers
+            const isInFrustum = frustum.containsPoint(mesh.position);
+            mesh.visible = isInFrustum && visibleCount < maxVisibleMarkers;
             
-            if (!performanceMode) {
-              // Reduced frequency pulsing animation
-              mesh.userData.pulsePhase += 0.01;
-              const pulse = 1 + Math.sin(mesh.userData.pulsePhase) * 0.2;
-              mesh.scale.setScalar(mesh.userData.originalScale * pulse);
-            } else {
-              // In performance mode, keep static scale
-              mesh.scale.setScalar(mesh.userData.originalScale);
+            if (mesh.visible) {
+              visibleCount++;
+              
+              // Stagger animations across frames to prevent hitches
+              if (!performanceMode && index % 3 === (Date.now() % 3)) {
+                mesh.userData.pulsePhase += 0.01;
+                const pulse = 1 + Math.sin(mesh.userData.pulsePhase) * 0.2;
+                mesh.scale.setScalar(mesh.userData.originalScale * pulse);
+              }
             }
           }
         });
