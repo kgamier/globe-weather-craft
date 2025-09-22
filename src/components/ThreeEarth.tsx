@@ -257,35 +257,46 @@ const ThreeEarth = () => {
   // Create country borders from GeoJSON data
   const createCountryBorders = async (scene: THREE.Scene): Promise<THREE.Group> => {
     try {
+      console.log('Loading country borders...');
       const response = await fetch('/data/countries.geojson');
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch GeoJSON: ${response.status}`);
+      }
+      
       const geojsonData = await response.json();
+      console.log('GeoJSON loaded, features count:', geojsonData.features?.length);
       
       const bordersGroup = new THREE.Group();
       bordersRef.current = bordersGroup;
       
-      // Create material for borders
+      // Create more visible material for borders
       const borderMaterial = new THREE.LineBasicMaterial({ 
-        color: 0xffffff, 
+        color: 0x00ff88, // Bright green color
         transparent: true, 
-        opacity: 0.3,
-        linewidth: 1
+        opacity: 0.8, // Higher opacity
+        linewidth: 2 // Thicker lines
       });
       
+      let totalLines = 0;
       geojsonData.features.forEach((feature: any) => {
         if (feature.geometry && feature.geometry.type === 'Polygon') {
           // Handle single polygon
-          createBorderLines(feature.geometry.coordinates, borderMaterial, bordersGroup);
+          totalLines += createBorderLines(feature.geometry.coordinates, borderMaterial, bordersGroup);
         } else if (feature.geometry && feature.geometry.type === 'MultiPolygon') {
           // Handle multiple polygons (for countries with islands, etc.)
           feature.geometry.coordinates.forEach((polygon: any) => {
-            createBorderLines(polygon, borderMaterial, bordersGroup);
+            totalLines += createBorderLines(polygon, borderMaterial, bordersGroup);
           });
         }
       });
       
+      console.log('Created', totalLines, 'border lines');
+      
       bordersGroup.visible = showCountryBorders;
       scene.add(bordersGroup);
       
+      toast.success(`Country borders loaded (${totalLines} lines)`);
       return bordersGroup;
     } catch (error) {
       console.error('Failed to load country borders:', error);
@@ -294,18 +305,20 @@ const ThreeEarth = () => {
     }
   };
   
-  const createBorderLines = (coordinates: any[], material: THREE.Material, group: THREE.Group) => {
+  const createBorderLines = (coordinates: any[], material: THREE.Material, group: THREE.Group): number => {
+    let linesCreated = 0;
+    
     coordinates.forEach((ring: any[]) => {
       const points: THREE.Vector3[] = [];
       
       // Sample every nth point for performance (reduce detail)
-      const step = Math.max(1, Math.floor(ring.length / 50)); // Limit to ~50 points per ring
+      const step = Math.max(1, Math.floor(ring.length / 100)); // More detail for better visibility
       
       for (let i = 0; i < ring.length; i += step) {
         const [lng, lat] = ring[i];
         if (typeof lat === 'number' && typeof lng === 'number' && 
             lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
-          points.push(latLngToVector3(lat, lng, 5.15)); // Slightly above Earth surface
+          points.push(latLngToVector3(lat, lng, 5.12)); // Slightly above Earth surface
         }
       }
       
@@ -313,8 +326,11 @@ const ThreeEarth = () => {
         const geometry = new THREE.BufferGeometry().setFromPoints(points);
         const line = new THREE.Line(geometry, material);
         group.add(line);
+        linesCreated++;
       }
     });
+    
+    return linesCreated;
   };
 
   useEffect(() => {
