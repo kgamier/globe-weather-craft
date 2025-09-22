@@ -517,6 +517,8 @@ const ThreeEarth = () => {
     let isMouseDown = false;
     let isRotating = false;
     let lastMousePosition = { x: 0, y: 0 };
+    let mouseDownTime = 0;
+    let totalMouseMovement = 0;
     let rotationVelocity = { x: 0, y: 0 };
     let userInteractionRef = { current: false }; // Ref to track user interaction state
 
@@ -524,11 +526,14 @@ const ThreeEarth = () => {
       if (event.button !== 0) return; // Only left click
       isMouseDown = true;
       isRotating = false;
+      mouseDownTime = Date.now();
+      totalMouseMovement = 0;
       userInteractionRef.current = true;
       lastMousePosition = { x: event.clientX, y: event.clientY };
       
       // Change cursor to indicate dragging mode
       renderer.domElement.style.cursor = 'grabbing';
+      console.log('Mouse down at', event.clientX, event.clientY);
     };
 
     const handleMouseMove = (event: MouseEvent) => {
@@ -539,8 +544,11 @@ const ThreeEarth = () => {
         y: event.clientY - lastMousePosition.y
       };
 
-      // If mouse moved enough, consider it rotation
-      if (Math.abs(deltaMove.x) > 2 || Math.abs(deltaMove.y) > 2) {
+      // Track total movement for better drag detection
+      totalMouseMovement += Math.abs(deltaMove.x) + Math.abs(deltaMove.y);
+
+      // Increase threshold for better drag detection (was 2, now 8 pixels)
+      if (totalMouseMovement > 8) {
         isRotating = true;
         userInteractionRef.current = true;
         
@@ -560,8 +568,24 @@ const ThreeEarth = () => {
     const handleMouseUp = (event: MouseEvent) => {
       if (event.button !== 0) return; // Only left click
       
-      // If it was just a click (no rotation), check for intersections
-      if (!isRotating && markersRef.current && cameraRef.current && earthRef.current) {
+      const clickDuration = Date.now() - mouseDownTime;
+      console.log('Mouse up - Duration:', clickDuration, 'Total movement:', totalMouseMovement, 'Is rotating:', isRotating);
+      
+      // Only treat as click if:
+      // 1. No significant rotation occurred
+      // 2. Total movement is minimal (< 8 pixels)
+      // 3. Click duration is reasonable (< 500ms to prevent accidental long holds)
+      // 4. Mouse actually went down first (mouseDownTime > 0)
+      if (!isRotating && 
+          totalMouseMovement < 8 && 
+          clickDuration < 500 && 
+          clickDuration > 0 &&
+          mouseDownTime > 0 && 
+          markersRef.current && 
+          cameraRef.current && 
+          earthRef.current) {
+        
+        console.log('Processing click at', event.clientX, event.clientY);
         const rect = renderer.domElement.getBoundingClientRect();
         mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
         mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -574,6 +598,7 @@ const ThreeEarth = () => {
         if (markerIntersects.length > 0) {
           const clickedObject = markerIntersects[0].object;
           if (clickedObject.userData && clickedObject.userData.city) {
+            console.log('City clicked:', clickedObject.userData.city.name);
             handleCityClick(clickedObject.userData.city);
             toast.success(`Getting forecast for ${clickedObject.userData.city.name}`);
           }
@@ -589,19 +614,36 @@ const ThreeEarth = () => {
             
             // Validate coordinates are within Earth bounds
             if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+              console.log('Surface clicked at:', lat, lng);
               handleSurfaceClick(lat, lng);
             }
           }
         }
+      } else {
+        console.log('Click ignored - isRotating:', isRotating, 'movement:', totalMouseMovement, 'duration:', clickDuration);
       }
       
+      // Reset all interaction state
       isMouseDown = false;
+      isRotating = false;
+      mouseDownTime = 0;
+      totalMouseMovement = 0;
       userInteractionRef.current = false;
       
       // Reset cursor
       renderer.domElement.style.cursor = 'grab';
-      
+    };
+
+    // Separate handler for mouse leave - does NOT trigger click detection
+    const handleMouseLeave = () => {
+      console.log('Mouse leave - resetting interaction state');
+      // Reset all state without triggering click detection
+      isMouseDown = false;
       isRotating = false;
+      mouseDownTime = 0;
+      totalMouseMovement = 0;
+      userInteractionRef.current = false;
+      renderer.domElement.style.cursor = 'grab';
     };
 
     // Set initial cursor style
@@ -617,7 +659,7 @@ const ThreeEarth = () => {
     renderer.domElement.addEventListener('mousedown', handleMouseDown);
     renderer.domElement.addEventListener('mousemove', handleMouseMove);
     renderer.domElement.addEventListener('mouseup', handleMouseUp);
-    renderer.domElement.addEventListener('mouseleave', handleMouseUp); // Handle mouse leaving canvas
+    renderer.domElement.addEventListener('mouseleave', handleMouseLeave); // Separate handler that doesn't trigger clicks
     renderer.domElement.addEventListener('wheel', handleWheel, { passive: false });
 
     // Optimized animation loop with performance monitoring
@@ -697,7 +739,7 @@ const ThreeEarth = () => {
       renderer.domElement.removeEventListener('mousedown', handleMouseDown);
       renderer.domElement.removeEventListener('mousemove', handleMouseMove);
       renderer.domElement.removeEventListener('mouseup', handleMouseUp);
-      renderer.domElement.removeEventListener('mouseleave', handleMouseUp);
+      renderer.domElement.removeEventListener('mouseleave', handleMouseLeave);
       renderer.domElement.removeEventListener('wheel', handleWheel);
       
       if (mountRef.current && renderer.domElement) {
