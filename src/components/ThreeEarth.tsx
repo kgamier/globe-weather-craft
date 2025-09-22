@@ -255,7 +255,7 @@ const ThreeEarth = () => {
   };
 
   // Create country borders from GeoJSON data
-  const createCountryBorders = async (scene: THREE.Scene): Promise<THREE.Group> => {
+  const createCountryBorders = async (earth: THREE.Mesh): Promise<THREE.Group> => {
     try {
       console.log('Loading country borders...');
       const response = await fetch('/data/countries.geojson');
@@ -294,7 +294,8 @@ const ThreeEarth = () => {
       console.log('Created', totalLines, 'border lines');
       
       bordersGroup.visible = showCountryBorders;
-      scene.add(bordersGroup);
+      // Add borders to Earth mesh so they rotate together
+      earth.add(bordersGroup);
       
       toast.success(`Country borders loaded (${totalLines} lines)`);
       return bordersGroup;
@@ -466,7 +467,7 @@ const ThreeEarth = () => {
 
       // Add country borders if enabled
       if (showCountryBorders) {
-        createCountryBorders(sceneRef.current!);
+        createCountryBorders(earth);
       }
 
       setIsLoading(false);
@@ -753,9 +754,9 @@ const ThreeEarth = () => {
   useEffect(() => {
     if (bordersRef.current) {
       bordersRef.current.visible = showCountryBorders;
-    } else if (showCountryBorders && sceneRef.current && !isLoading) {
-      // Create borders if they don't exist yet
-      createCountryBorders(sceneRef.current);
+    } else if (showCountryBorders && earthRef.current && !isLoading) {
+      // Create borders if they don't exist yet - attach to Earth mesh
+      createCountryBorders(earthRef.current);
     }
   }, [showCountryBorders, isLoading]);
 
