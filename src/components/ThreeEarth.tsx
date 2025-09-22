@@ -215,15 +215,15 @@ const ThreeEarth = () => {
   const regions = ['All', 'North America', 'South America', 'Europe', 'Asia', 'Africa', 'Oceania'];
   const cityStats = getCityCount();
 
-  // Convert lat/lng to 3D coordinates on sphere
+  // Convert lat/lng to 3D coordinates on sphere (reference implementation)
   const latLngToVector3 = (lat: number, lng: number, radius: number = 5.1) => {
-    const phi = (90 - lat) * (Math.PI / 180);
-    const theta = (lng + 180) * (Math.PI / 180);
+    const phi = (90 - lat) * (Math.PI / 180);      // Colatitude (0 at north pole)
+    const theta = (lng + 180) * (Math.PI / 180);   // Longitude shifted by 180°
     
     return new THREE.Vector3(
-      -(radius * Math.sin(phi) * Math.cos(theta)),
-      radius * Math.cos(phi),
-      radius * Math.sin(phi) * Math.sin(theta)
+      -(radius * Math.sin(phi) * Math.cos(theta)),  // Note: X is negated
+      radius * Math.cos(phi),                       // Y points to north pole
+      radius * Math.sin(phi) * Math.sin(theta)      // Z component  
     );
   };
 
@@ -602,13 +602,27 @@ const ThreeEarth = () => {
     toast.success(`Updated date range: ${range.start} to ${range.end}`);
   };
 
-  // Convert 3D point back to lat/lng coordinates
+  // Convert 3D point back to lat/lng coordinates (fixed to match latLngToVector3)
   const vector3ToLatLng = (vector: THREE.Vector3): { lat: number; lng: number } => {
     const normalizedVector = vector.clone().normalize();
     
-    // Convert from Cartesian to spherical coordinates  
-    const lat = Math.asin(normalizedVector.y) * (180 / Math.PI);
-    const lng = Math.atan2(-normalizedVector.z, -normalizedVector.x) * (180 / Math.PI);
+    // This must exactly invert the latLngToVector3 transformation:
+    // X: -(radius * Math.sin(phi) * Math.cos(theta))
+    // Y: radius * Math.cos(phi)  
+    // Z: radius * Math.sin(phi) * Math.sin(theta)
+    
+    // From Y component: lat = 90 - phi, where phi = acos(y)
+    const phi = Math.acos(Math.max(-1, Math.min(1, normalizedVector.y)));
+    const lat = 90 - (phi * (180 / Math.PI));
+    
+    // From X and Z components: theta = atan2(z, -x) 
+    // Note: we use -x because forward conversion negates x
+    const theta = Math.atan2(normalizedVector.z, -normalizedVector.x);
+    let lng = (theta * (180 / Math.PI)) - 180;
+    
+    // Normalize longitude to [-180, 180] range
+    while (lng > 180) lng -= 360;
+    while (lng < -180) lng += 360;
     
     return { lat, lng };
   };
