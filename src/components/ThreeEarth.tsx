@@ -499,6 +499,8 @@ const ThreeEarth = () => {
       transparent: true,
       opacity: performanceMode ? 0.1 : 0.2, // Reduce opacity in performance mode
     });
+    // Prevent transparent clouds from occluding front-facing borders
+    cloudsMaterial.depthWrite = false;
     const clouds = new THREE.Mesh(cloudsGeometry, cloudsMaterial);
     if (sceneRef.current) {
       sceneRef.current.add(clouds);
