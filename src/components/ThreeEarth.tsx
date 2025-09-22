@@ -319,7 +319,8 @@ const ThreeEarth = () => {
         const [lng, lat] = ring[i];
         if (typeof lat === 'number' && typeof lng === 'number' && 
             lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
-          points.push(latLngToVector3(lat, lng, 5.12)); // Slightly above Earth surface
+          // Use radius slightly smaller than Earth surface since we're now a child of Earth mesh
+          points.push(latLngToVector3(lat, lng, 5.02)); // Just above Earth surface, but as child
         }
       }
       
@@ -752,9 +753,13 @@ const ThreeEarth = () => {
 
   // Handle borders toggle
   useEffect(() => {
+    console.log('Border toggle useEffect:', { showCountryBorders, earthRef: !!earthRef.current, isLoading, bordersRef: !!bordersRef.current });
+    
     if (bordersRef.current) {
+      console.log('Setting border visibility to:', showCountryBorders);
       bordersRef.current.visible = showCountryBorders;
     } else if (showCountryBorders && earthRef.current && !isLoading) {
+      console.log('Creating borders - Earth ref exists, not loading');
       // Create borders if they don't exist yet - attach to Earth mesh
       createCountryBorders(earthRef.current);
     }
@@ -1247,8 +1252,11 @@ const ThreeEarth = () => {
                 variant={showCountryBorders ? "default" : "outline"}
                 size="sm"
                 onClick={() => {
-                  setShowCountryBorders(!showCountryBorders);
-                  toast.success(`Country borders ${!showCountryBorders ? 'enabled' : 'disabled'}`);
+                  console.log('Border toggle clicked, current state:', showCountryBorders);
+                  const newState = !showCountryBorders;
+                  setShowCountryBorders(newState);
+                  console.log('Border toggle - new state will be:', newState);
+                  toast.success(`Country borders ${newState ? 'enabled' : 'disabled'}`);
                 }}
               >
                 {showCountryBorders ? 'ON' : 'OFF'}
