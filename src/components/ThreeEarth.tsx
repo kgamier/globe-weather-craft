@@ -324,7 +324,7 @@ const ThreeEarth = () => {
         if (typeof lat === 'number' && typeof lng === 'number' && 
             lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
           // Use radius slightly smaller than Earth surface since we're now a child of Earth mesh
-          points.push(latLngToVector3(lat, lng, 5.08)); // Slightly above Earth surface
+          points.push(latLngToVector3(lat, lng, 5.12)); // Slightly above clouds to avoid occlusion
         }
       }
       
