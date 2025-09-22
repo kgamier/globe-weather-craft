@@ -50,7 +50,7 @@ const ThreeEarth = () => {
   const raycasterRef = useRef<THREE.Raycaster>();
   const mouseRef = useRef<THREE.Vector2>();
   const lastUpdateTime = useRef<number>(0);
-  const bordersRef = useRef<THREE.Group>();
+  
   
   const [isLoading, setIsLoading] = useState(true);
   const [showNightLights, setShowNightLights] = useState(false);
@@ -68,7 +68,7 @@ const ThreeEarth = () => {
   const [selectedCity, setSelectedCity] = useState<City | null>(null);
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [performanceMode, setPerformanceMode] = useState<boolean>(false);
-  const [showCountryBorders, setShowCountryBorders] = useState(true);
+  
   const [showWeatherForecast, setShowWeatherForecast] = useState(false);
   const [showEventPlanner, setShowEventPlanner] = useState(false);
   const [forecastCity, setForecastCity] = useState<City | null>(null);
@@ -254,92 +254,7 @@ const ThreeEarth = () => {
     );
   };
 
-  // Create country borders from GeoJSON data
-  const createCountryBorders = async (earth: THREE.Mesh): Promise<THREE.Group> => {
-    try {
-      console.log('Loading country borders...');
-      const response = await fetch('/data/countries.geojson');
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch GeoJSON: ${response.status}`);
-      }
-      
-      const geojsonData = await response.json();
-      console.log('GeoJSON loaded, features count:', geojsonData.features?.length);
-      
-      const bordersGroup = new THREE.Group();
-      bordersRef.current = bordersGroup;
-      
-      // Create more visible material for borders
-      const borderMaterial = new THREE.LineBasicMaterial({ 
-        color: 0xffffff, // High-contrast white
-        transparent: true, 
-        opacity: 1.0,
-        depthTest: true,
-        depthWrite: false,
-        polygonOffset: true,
-        polygonOffsetFactor: -2,
-        polygonOffsetUnits: -2
-      });
-      
-      let totalLines = 0;
-      geojsonData.features.forEach((feature: any) => {
-        if (feature.geometry && feature.geometry.type === 'Polygon') {
-          // Handle single polygon
-          totalLines += createBorderLines(feature.geometry.coordinates, borderMaterial, bordersGroup);
-        } else if (feature.geometry && feature.geometry.type === 'MultiPolygon') {
-          // Handle multiple polygons (for countries with islands, etc.)
-          feature.geometry.coordinates.forEach((polygon: any) => {
-            totalLines += createBorderLines(polygon, borderMaterial, bordersGroup);
-          });
-        }
-      });
-      
-      console.log('Created', totalLines, 'border lines');
-      
-      bordersGroup.visible = showCountryBorders;
-      // Add borders to Earth mesh so they rotate together
-      earth.add(bordersGroup);
-      
-      toast.success(`Country borders loaded (${totalLines} lines)`);
-      return bordersGroup;
-    } catch (error) {
-      console.error('Failed to load country borders:', error);
-      toast.error('Failed to load country borders');
-      return new THREE.Group();
-    }
-  };
   
-  const createBorderLines = (coordinates: any[], material: THREE.Material, group: THREE.Group): number => {
-    let linesCreated = 0;
-    
-    coordinates.forEach((ring: any[]) => {
-      const points: THREE.Vector3[] = [];
-      
-      // Sample every nth point for performance (reduce detail)
-      const step = Math.max(1, Math.floor(ring.length / 100)); // More detail for better visibility
-      
-      for (let i = 0; i < ring.length; i += step) {
-        const [lng, lat] = ring[i];
-        if (typeof lat === 'number' && typeof lng === 'number' && 
-            lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
-          // Use radius slightly smaller than Earth surface since we're now a child of Earth mesh
-          points.push(latLngToVector3(lat, lng, 5.12)); // Slightly above clouds to avoid occlusion
-        }
-      }
-      
-      if (points.length > 1) {
-        const geometry = new THREE.BufferGeometry().setFromPoints(points);
-        const line = new THREE.LineLoop(geometry, material as THREE.LineBasicMaterial);
-        line.renderOrder = 999;
-        line.frustumCulled = false;
-        group.add(line);
-        linesCreated++;
-      }
-    });
-    
-    return linesCreated;
-  };
 
   useEffect(() => {
     if (!mountRef.current) return;
@@ -472,10 +387,6 @@ const ThreeEarth = () => {
       
       earth.add(markersGroup);
 
-      // Add country borders if enabled
-      if (showCountryBorders) {
-        createCountryBorders(earth);
-      }
 
       setIsLoading(false);
       toast.success("Earth loaded successfully!");
@@ -759,19 +670,6 @@ const ThreeEarth = () => {
     };
   }, []);
 
-  // Handle borders toggle
-  useEffect(() => {
-    console.log('Border toggle useEffect:', { showCountryBorders, earthRef: !!earthRef.current, isLoading, bordersRef: !!bordersRef.current });
-    
-    if (bordersRef.current) {
-      console.log('Setting border visibility to:', showCountryBorders);
-      bordersRef.current.visible = showCountryBorders;
-    } else if (showCountryBorders && earthRef.current && !isLoading) {
-      console.log('Creating borders - Earth ref exists, not loading');
-      // Create borders if they don't exist yet - attach to Earth mesh
-      createCountryBorders(earthRef.current);
-    }
-  }, [showCountryBorders, isLoading]);
 
   // Sync autoRotate state with ref whenever it changes
   useEffect(() => {
@@ -1254,22 +1152,6 @@ const ThreeEarth = () => {
               </Button>
             </div>
 
-            <div className="flex items-center justify-between">
-              <Label className="text-sm">Country Borders</Label>
-              <Button
-                variant={showCountryBorders ? "default" : "outline"}
-                size="sm"
-                onClick={() => {
-                  console.log('Border toggle clicked, current state:', showCountryBorders);
-                  const newState = !showCountryBorders;
-                  setShowCountryBorders(newState);
-                  console.log('Border toggle - new state will be:', newState);
-                  toast.success(`Country borders ${newState ? 'enabled' : 'disabled'}`);
-                }}
-              >
-                {showCountryBorders ? 'ON' : 'OFF'}
-              </Button>
-            </div>
 
             <div className="pt-2 border-t border-border/50">
               <div className="text-xs space-y-1">
