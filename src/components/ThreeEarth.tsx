@@ -615,6 +615,7 @@ const ThreeEarth = () => {
 
   // Reverse geocoding cache for performance
   const geocodingCacheRef = useRef<Map<string, any>>(new Map());
+  const pendingGeocodeRequestsRef = useRef<Map<string, Promise<any>>>(new Map());
 
   // Get cached reverse geocoding result
   const getCachedGeocode = (lat: number, lng: number): any | null => {
@@ -665,94 +666,127 @@ const ThreeEarth = () => {
     }
   };
 
-  // Reverse geocode coordinates to get region information
+  // Optimized reverse geocode with aggressive caching and request deduplication
   const reverseGeocode = async (lat: number, lng: number): Promise<any> => {
-    // Check cache first
+    // Check cache first for instant response
     const cached = getCachedGeocode(lat, lng);
     if (cached) return cached;
 
-    try {
-      // Use Nominatim for free reverse geocoding
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?` +
-        `lat=${lat}&lon=${lng}&format=json&` +
-        `addressdetails=1&accept-language=en&` +
-        `zoom=10&extratags=1`,
-        {
-          headers: {
-            'User-Agent': 'EarthWeatherApp/1.0'
-          }
-        }
-      );
+    // Create a unique key for this request
+    const requestKey = `${Math.round(lat * 100)},${Math.round(lng * 100)}`;
+    
+    // If request is already in flight, wait for it instead of making duplicate request
+    if (pendingGeocodeRequestsRef.current.has(requestKey)) {
+      return pendingGeocodeRequestsRef.current.get(requestKey);
+    }
 
-      if (!response.ok) throw new Error('Geocoding failed');
+    try {
+      // Create the promise for this geocoding request
+      const geocodePromise = (async () => {
+        // Add timeout and retry logic
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
+
+        const response = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?` +
+          `lat=${lat}&lon=${lng}&format=json&` +
+          `addressdetails=1&accept-language=en&` +
+          `zoom=8&extratags=1`, // Reduced zoom for faster response
+          {
+            headers: {
+              'User-Agent': 'EarthWeatherApp/1.0'
+            },
+            signal: controller.signal
+          }
+        );
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) throw new Error('Geocoding failed');
+        
+        const data = await response.json();
+        
+        // Cache the result immediately
+        setCachedGeocode(lat, lng, data);
+        
+        return data;
+      })();
+
+      // Store the promise so other requests can wait for it
+      pendingGeocodeRequestsRef.current.set(requestKey, geocodePromise);
       
-      const data = await response.json();
+      const result = await geocodePromise;
       
-      // Cache the result
-      setCachedGeocode(lat, lng, data);
+      // Clean up the pending request
+      pendingGeocodeRequestsRef.current.delete(requestKey);
       
-      return data;
+      return result;
     } catch (error) {
+      // Clean up on error
+      pendingGeocodeRequestsRef.current.delete(requestKey);
       console.warn('Reverse geocoding failed:', error);
       return null;
     }
   };
 
-  // Get enhanced location name with regional data
+  // Optimized location naming with performance improvements
   const getLocationName = async (lat: number, lng: number): Promise<string> => {
     try {
-      // Try reverse geocoding first
-      const geocodeResult = await reverseGeocode(lat, lng);
+      // Try reverse geocoding with timeout
+      const geocodeResult = await Promise.race([
+        reverseGeocode(lat, lng),
+        new Promise(resolve => setTimeout(() => resolve(null), 2000)) // 2 second timeout
+      ]);
       
       if (geocodeResult && geocodeResult.address) {
         const addr = geocodeResult.address;
         const parts: string[] = [];
         
-        // Build location string from most specific to general
-        if (addr.city || addr.town || addr.village) {
-          parts.push(addr.city || addr.town || addr.village);
+        // Prioritize most specific location info
+        if (addr.city || addr.town || addr.village || addr.hamlet) {
+          parts.push(addr.city || addr.town || addr.village || addr.hamlet);
         }
         
-        if (addr.state || addr.province || addr.region) {
-          parts.push(addr.state || addr.province || addr.region);
+        // Add administrative divisions
+        if (addr.state || addr.province || addr.region || addr.county) {
+          parts.push(addr.state || addr.province || addr.region || addr.county);
         }
         
         if (addr.country) {
           parts.push(addr.country);
         }
         
-        // If we have good data, return it
+        // Return if we have good regional data
         if (parts.length >= 2) {
           return parts.join(', ');
         }
         
-        // Fallback: use display name if available
+        // Fallback to cleaned display name
         if (geocodeResult.display_name) {
-          // Clean up the display name (remove house numbers, postcodes, etc.)
           const cleaned = geocodeResult.display_name
             .split(',')
+            .map((part: string) => part.trim())
             .filter((part: string) => {
-              const trimmed = part.trim();
-              // Filter out house numbers, postcodes, and coordinate-like strings
-              return !/^\d+$/.test(trimmed) && 
-                     !/^\d{4,}/.test(trimmed) &&
-                     !trimmed.match(/^[\d\-\s]+$/) &&
-                     trimmed.length > 1;
+              // Remove house numbers, postcodes, and coordinate-like strings
+              return !/^\d+$/.test(part) && 
+                     !/^\d{4,}/.test(part) &&
+                     !part.match(/^[\d\-\s]+$/) &&
+                     part.length > 2 &&
+                     !part.includes('°'); // Remove coordinate references
             })
-            .slice(0, 3) // Take first 3 meaningful parts
+            .slice(0, 3)
             .join(', ');
           
-          if (cleaned.length > 0) {
+          if (cleaned.length > 5) {
             return cleaned;
           }
         }
       }
     } catch (error) {
-      console.warn('Enhanced geocoding failed, falling back to nearest city:', error);
+      console.warn('Enhanced geocoding failed, using fallback:', error);
     }
     
-    // Fallback to nearest city method
+    // Fast fallback to nearest city method
     return getNearestCityName(lat, lng);
   };
 
@@ -798,10 +832,12 @@ const ThreeEarth = () => {
 
   // Handle surface click for weather at any location
   const handleSurfaceClick = async (lat: number, lng: number) => {
-    // Show loading state
-    toast.loading("Getting location info...", { id: 'location-loading' });
-    
     try {
+      // Show simple loading message
+      toast("Getting location info...", { 
+        description: "Fetching regional data for selected location"
+      });
+      
       const locationName = await getLocationName(lat, lng);
       
       // Create a temporary city-like object for the clicked location
@@ -820,12 +856,14 @@ const ThreeEarth = () => {
       setShowWeatherForecast(true);
       fetchWeatherData(tempLocation);
       
-      // Dismiss loading and show success
-      toast.dismiss('location-loading');
-      toast.success(`Getting forecast for ${locationName}`);
+      // Show success message
+      toast.success(`Getting forecast for ${locationName}`, {
+        description: `Lat: ${lat.toFixed(3)}, Lng: ${lng.toFixed(3)}`
+      });
     } catch (error) {
-      toast.dismiss('location-loading');
-      toast.error("Failed to get location info");
+      toast.error("Failed to get location info", {
+        description: "Please try clicking another location"
+      });
       console.error('Error getting location name:', error);
     }
   };
