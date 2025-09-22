@@ -618,12 +618,13 @@ const ThreeEarth = () => {
           
           if (earthIntersects.length > 0) {
             const intersection = earthIntersects[0].point;
-            // Use world coordinates directly since Earth is at origin
-            const { lat, lng } = vector3ToLatLng(intersection);
+            // Transform intersection to Earth's local space to account for rotation
+            const localPoint = earthRef.current.worldToLocal(intersection.clone());
+            const { lat, lng } = vector3ToLatLng(localPoint);
             
             // Validate coordinates are within Earth bounds
             if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
-              console.log('Surface clicked at:', lat, lng);
+              console.log('Surface clicked at:', lat, lng, 'World point:', intersection, 'Local point:', localPoint);
               handleSurfaceClick(lat, lng);
             }
           }
