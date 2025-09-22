@@ -8,6 +8,47 @@ const populationUpdates: Record<string, number> = {
   // Update any cities with missing or inaccurate population data
   // Key format: "CityName,Country"
   
+  // OECD Countries - Enhanced major cities data
+  "Birmingham,United Kingdom": 2600000,
+  "Lyon,France": 1400000,
+  "Hamburg,Germany": 1900000,
+  "Frankfurt,Germany": 750000,
+  "Naples,Italy": 2200000,
+  "Turin,Italy": 1700000,
+  "Valencia,Spain": 1600000,
+  "Seville,Spain": 1400000,
+  "Rotterdam,Netherlands": 650000,
+  "The Hague,Netherlands": 550000,
+  "Antwerp,Belgium": 530000,
+  "Geneva,Switzerland": 500000,
+  "Basel,Switzerland": 180000,
+  "Salzburg,Austria": 150000,
+  "Gothenburg,Sweden": 580000,
+  "Bergen,Norway": 280000,
+  "Aarhus,Denmark": 280000,
+  "Tampere,Finland": 240000,
+  "Thessaloniki,Greece": 1100000,
+  "Izmir,Turkey": 4400000,
+  "Porto,Portugal": 1700000,
+  "Brno,Czech Republic": 380000,
+  "Debrecen,Hungary": 200000,
+  "Yokohama,Japan": 3800000,
+  "Nagoya,Japan": 2300000,
+  "Incheon,South Korea": 3000000,
+  "Haifa,Israel": 1100000,
+  "Perth,Australia": 2100000,
+  "Brisbane,Australia": 2500000,
+  "Adelaide,Australia": 1400000,
+  "Christchurch,New Zealand": 390000,
+  
+  // Baltic States
+  "Tartu,Estonia": 100000,
+  "Daugavpils,Latvia": 80000,
+  "Kaunas,Lithuania": 290000,
+  
+  // Other missing OECD cities
+  "Cartago,Costa Rica": 160000,
+  
   // Small capitals that might be missing population data
   "Suva,Fiji": 200000,
   "Port Moresby,Papua New Guinea": 400000,

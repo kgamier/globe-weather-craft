@@ -24,6 +24,9 @@ export const worldCities: City[] = [
   { name: 'Mexico City', country: 'Mexico', lat: 19.4326, lng: -99.1332, population: 21800000, isCapital: true, region: 'North America' },
   { name: 'Guadalajara', country: 'Mexico', lat: 20.6597, lng: -103.3496, population: 5200000, isCapital: false, region: 'North America' },
 
+  // Costa Rica
+  { name: 'San José', country: 'Costa Rica', lat: 9.9281, lng: -84.0907, population: 1400000, isCapital: true, region: 'North America' },
+
   // Guatemala
   { name: 'Guatemala City', country: 'Guatemala', lat: 14.6349, lng: -90.5069, population: 2900000, isCapital: true, region: 'North America' },
 
@@ -121,6 +124,31 @@ export const worldCities: City[] = [
 
   // Finland
   { name: 'Helsinki', country: 'Finland', lat: 60.1699, lng: 24.9384, population: 1500000, isCapital: true, region: 'Europe' },
+
+  // Iceland
+  { name: 'Reykjavik', country: 'Iceland', lat: 64.1466, lng: -21.9426, population: 140000, isCapital: true, region: 'Europe' },
+
+  // Ireland
+  { name: 'Dublin', country: 'Ireland', lat: 53.3498, lng: -6.2603, population: 1400000, isCapital: true, region: 'Europe' },
+  { name: 'Cork', country: 'Ireland', lat: 51.8985, lng: -8.4756, population: 220000, isCapital: false, region: 'Europe' },
+
+  // Estonia
+  { name: 'Tallinn', country: 'Estonia', lat: 59.4370, lng: 24.7536, population: 450000, isCapital: true, region: 'Europe' },
+
+  // Latvia
+  { name: 'Riga', country: 'Latvia', lat: 56.9496, lng: 24.1052, population: 640000, isCapital: true, region: 'Europe' },
+
+  // Lithuania
+  { name: 'Vilnius', country: 'Lithuania', lat: 54.6872, lng: 25.2797, population: 590000, isCapital: true, region: 'Europe' },
+
+  // Luxembourg
+  { name: 'Luxembourg City', country: 'Luxembourg', lat: 49.6116, lng: 6.1319, population: 130000, isCapital: true, region: 'Europe' },
+
+  // Slovakia
+  { name: 'Bratislava', country: 'Slovakia', lat: 48.1486, lng: 17.1077, population: 440000, isCapital: true, region: 'Europe' },
+
+  // Slovenia
+  { name: 'Ljubljana', country: 'Slovenia', lat: 46.0569, lng: 14.5058, population: 290000, isCapital: true, region: 'Europe' },
 
   // Greece
   { name: 'Athens', country: 'Greece', lat: 37.9838, lng: 23.7275, population: 3800000, isCapital: true, region: 'Europe' },
