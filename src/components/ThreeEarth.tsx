@@ -83,6 +83,9 @@ const ThreeEarth = () => {
     };
   });
   const [selectedGridCell, setSelectedGridCell] = useState<GridCell | null>(null);
+  
+  // Surface click weather state
+  const [clickedLocation, setClickedLocation] = useState<{ lat: number; lng: number; name: string } | null>(null);
 
   // Get filtered cities based on user preferences
   const getFilteredCities = (): City[] => {
@@ -444,20 +447,35 @@ const ThreeEarth = () => {
     const handleMouseUp = (event: MouseEvent) => {
       if (event.button !== 0) return; // Only left click
       
-      // If it was just a click (no rotation), check for city clicks
-      if (!isRotating && markersRef.current && cameraRef.current) {
+      // If it was just a click (no rotation), check for intersections
+      if (!isRotating && markersRef.current && cameraRef.current && earthRef.current) {
         const rect = renderer.domElement.getBoundingClientRect();
         mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
         mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
         
         raycaster.setFromCamera(mouse, cameraRef.current);
-        const intersects = raycaster.intersectObjects(markersRef.current.children, true);
         
-        if (intersects.length > 0) {
-          const clickedObject = intersects[0].object;
+        // First, check for city marker clicks (higher priority)
+        const markerIntersects = raycaster.intersectObjects(markersRef.current.children, true);
+        
+        if (markerIntersects.length > 0) {
+          const clickedObject = markerIntersects[0].object;
           if (clickedObject.userData && clickedObject.userData.city) {
             handleCityClick(clickedObject.userData.city);
             toast.success(`Getting forecast for ${clickedObject.userData.city.name}`);
+          }
+        } else {
+          // If no city marker was clicked, check for Earth surface click
+          const earthIntersects = raycaster.intersectObject(earthRef.current, true);
+          
+          if (earthIntersects.length > 0) {
+            const intersection = earthIntersects[0].point;
+            const { lat, lng } = vector3ToLatLng(intersection);
+            
+            // Validate coordinates are within Earth bounds
+            if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+              handleSurfaceClick(lat, lng);
+            }
           }
         }
       }
@@ -582,6 +600,80 @@ const ThreeEarth = () => {
     setHistoricalDateRange(range);
     setSelectedGridCell(null); // Clear selection when date range changes
     toast.success(`Updated date range: ${range.start} to ${range.end}`);
+  };
+
+  // Convert 3D point back to lat/lng coordinates
+  const vector3ToLatLng = (vector: THREE.Vector3): { lat: number; lng: number } => {
+    const normalizedVector = vector.clone().normalize();
+    
+    // Convert from Cartesian to spherical coordinates  
+    const lat = Math.asin(normalizedVector.y) * (180 / Math.PI);
+    const lng = Math.atan2(-normalizedVector.z, -normalizedVector.x) * (180 / Math.PI);
+    
+    return { lat, lng };
+  };
+
+  // Get location name from coordinates (simple reverse geocoding)
+  const getLocationName = (lat: number, lng: number): string => {
+    // Find nearest city for reference
+    const nearestCity = worldCities.reduce((closest, city) => {
+      const cityDistance = Math.sqrt(
+        Math.pow(city.lat - lat, 2) + Math.pow(city.lng - lng, 2)
+      );
+      const closestDistance = Math.sqrt(
+        Math.pow(closest.lat - lat, 2) + Math.pow(closest.lng - lng, 2)
+      );
+      return cityDistance < closestDistance ? city : closest;
+    });
+
+    const distance = Math.sqrt(
+      Math.pow(nearestCity.lat - lat, 2) + Math.pow(nearestCity.lng - lng, 2)
+    );
+
+    // If very close to a city (within ~50km), use city name
+    if (distance < 0.5) {
+      return `${nearestCity.name}, ${nearestCity.country}`;
+    }
+
+    // Otherwise create a descriptive name
+    const direction = getDirection(lat, lng, nearestCity.lat, nearestCity.lng);
+    const distanceKm = Math.round(distance * 111); // Convert to rough km
+    
+    return `${distanceKm}km ${direction} of ${nearestCity.name}, ${nearestCity.country}`;
+  };
+
+  const getDirection = (lat1: number, lng1: number, lat2: number, lng2: number): string => {
+    const dlat = lat1 - lat2;
+    const dlng = lng1 - lng2;
+    
+    const angle = Math.atan2(dlng, dlat) * (180 / Math.PI);
+    const directions = ['North', 'NE', 'East', 'SE', 'South', 'SW', 'West', 'NW'];
+    const index = Math.round((angle + 360) % 360 / 45) % 8;
+    
+    return directions[index];
+  };
+
+  // Handle surface click for weather at any location
+  const handleSurfaceClick = (lat: number, lng: number) => {
+    const locationName = getLocationName(lat, lng);
+    
+    // Create a temporary city-like object for the clicked location
+    const tempLocation = {
+      name: locationName,
+      country: "Custom Location",
+      lat: lat,
+      lng: lng,
+      population: 0,
+      isCapital: false,
+      region: "Custom"
+    };
+
+    setClickedLocation({ lat, lng, name: locationName });
+    setForecastCity(tempLocation);
+    setShowWeatherForecast(true);
+    fetchWeatherData(tempLocation);
+    
+    toast.success(`Getting forecast for ${locationName}`);
   };
 
   return (
@@ -973,6 +1065,7 @@ const ThreeEarth = () => {
           <ul className="text-muted-foreground space-y-1 text-xs">
             <li>• <span className="font-medium">Hold left-click + drag</span> to rotate Earth</li>
             <li>• <span className="font-medium">Click city dots</span> for current weather</li>
+            <li>• <span className="font-medium">Click anywhere on Earth</span> for location forecast</li>
             <li>• <span className="font-medium">Select city + Event Planner</span> for probability analysis</li>
             <li>• Search cities above to focus on them</li>
             <li>• Scroll to zoom in/out</li>
